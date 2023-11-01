@@ -1,0 +1,75 @@
+pro tilt
+; this program detects time differences between model maxima and measured maxima. if there is a tilt in 
+; the instrument, there will be a permanent value for the time difference
+    close,/all
+    n=90412
+  data=fltarr(10,n)
+  dn1=fltarr(1,n)
+  dn=fltarr(1,n)
+  day=fltarr(1,n)
+  mo=fltarr(1,n)
+  yr=fltarr(1,n)
+  hr=fltarr(1,n)
+  z=fltarr(1,n)
+  minute=fltarr(1,n)
+  rawpar=fltarr(1,n)
+  modpar=fltarr(1,n)
+  const=fltarr(19)
+  const1=fltarr(19)
+  ;  x=fltarr(1,n)
+  ;  y=fltarr(1,n)
+  openr,10,'c:\data\AIMS\rv_correction\Davies Reef\daviesB_19092017_14062021.txt',data
+  openw,11,'c:\data\AIMS\rv_correction\Davies Reef\tilt_19092017_14062021.txt'
+;  openw,12,'c:\data\AIMS\rv_correction\Davies Reef\cloudlessin_19092017_14062021.txt'
+  readf,10,data
+  dn1(*)=data(0,*)
+  dn(*)=data(1,*)
+  day(*)=data(2,*)
+  mo(*)=data(3,*)
+  yr(*)=data(4,*)
+  hr(*)=data(5,*)
+  minute(*)=data(6,*)
+  z(*)=data(7,*)
+  modpar(*)=data(8,*)
+  rawpar(*)=data(9,*)
+  dnstart=dn(0)
+  yrstart=yr(0)
+  dayold=day(0)
+  mold=mo(0)
+  yrold=yr(0)
+  ii=0L
+  iold=0L
+  ; Two series are created for each day: x containing raw PAR and y containing model PAR.
+  ; time of maximum in x and maximum y are calculated and time difference (del) are estimated.
+  ; del is measured as "difference in number of 10 minute episodes" 
+  ; In general, cloudless days would have del ~0 and del in cloudy days would have del spread
+  ; evenly between + and - deviations. It is expected that tilt shifts would present a consistent 
+  ; del in one direction 
+  for i=0,n-1 do begin
+    dn10=dn1(i)
+    dn0=dn(i)
+    mo0=mo(i)
+    yr0=yr(i)
+    day0=day(i)
+    if day0 ne dayold then begin
+      ;      print,dayold,day0
+      nn=(ii-1)-(iold)+1
+      x=fltarr(1,nn)
+      y=fltarr(1,nn)
+      x=rawpar(iold:ii-1)
+      y=modpar(iold:ii-1)
+      hr1=hr(iold:ii-1)
+      minute1=minute(iold:ii-1)
+      res_raw=max(x,i1)
+      res_mod=max(y,i2)
+      del=i2-i1
+      printf,11,dn1(i-1),dn(i-1),dayold,mo(i-1),yr(i-1),del 
+      dayold=day0
+      mold=mo0
+      yrold=yr0
+      iold=ii
+      endif
+    ii=ii+1
+  endfor
+  close,/all
+end

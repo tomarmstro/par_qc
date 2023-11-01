@@ -1,0 +1,34 @@
+How exactly is Corr PAR calculated?
+
+Current: 
+pratio = 0.0001221 * dataframe['dn'].iloc[i] + 0.95767
+
+corrpar = dataframe['rawpar'].iloc[i] * pratio
+
+Where does 0.0001221 and 0.95767 come from?
+
+
+
+Par(Corr)(d,z) = Par(Raw) * c1(d) * c2(z)
+
+c1: Depends on days after deployment (d)
+c2: depends on zenith angle (z) - We assume this to be 1 with our assumption of <5% error due to delineation (We will QC high tilt values out later?)
+
+c1(d) = Par(mod)(Noon)/Par(Raw)(Noon)
+
+
+groovy gorilla 20.10
+
+10k mem
+4 cpu
+
+
+su -
+nano /etc/sudoers
+
+sudo apt install python2
+
+
+modis data
+giovani
+angstrom function 

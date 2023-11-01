@@ -1,0 +1,21 @@
+detect cloudless days (flag them?)
+thresholds of 5%?
+Tilt of 2 week threshold for negative values + maybe magnitude?
+Tilt for 3-4+ cloudless days in a row?
+
+tilt detection (thresholds) to determine if real time data shows tilt? (alerts) - Allows for enhanced reactive maintenance to exceeding thresholds
+
+try to convert and then use the tilt script --> build in thresholds and test them on the data? (Use the obvious tilt section of the data)
+
+
+
+
+
+
+
+pcorr seems ~ 1% off? Possible a rounding error?
+
+
+
+
+73915

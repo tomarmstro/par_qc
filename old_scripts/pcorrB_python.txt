@@ -1,0 +1,83 @@
+
+#imports
+import numpy as np
+import csv
+import pandas as pd
+from statistics import stdev
+
+#config
+input_file = r'C:\Users\tarmstro\Python\par_qc\manuel_files\python_output_corrA.csv'
+output_file_clear_stats = r'C:\Users\tarmstro\Python\par_qc\manuel_files\python_output_corrB_clear_stats.csv'
+output_file_cloudless_days = r'C:\Users\tarmstro\Python\par_qc\manuel_files\python_output_corrB_cloudless.csv'
+
+def statsxy(x, y):
+    const = []
+    const1 = []
+    for j in range(19):
+        dely = 2.0 - j * 0.1
+        y1 = y * dely
+        const.append(stdev(x - y1))
+        const1.append(stdev(x - y1) / np.max(y))
+    # np.std gives slightly different constant values
+        # const.append(np.std(x - y1))
+        # const1.append(np.std(x - y1) / np.max(y))
+    return const, const1
+
+def pcorrB():
+    n = 51732
+    # n = 51733 #python indexing so one less n
+    data = pd.read_csv(input_file, header=None)
+    dn1 = data[0]
+    dn = data[1]
+    day = data[2]
+    mo = data[3]
+    yr = data[4]
+    hr = data[5]
+    minute = data[6]
+    z = data[7]
+    modpar = data[8]
+    rawpar = data[9]
+    dnstart = dn[0]
+    yrstart = yr[0]
+    dayold = day[0]
+    mold = mo[0]
+    yrold = yr[0]
+    ii = 0
+    iold = 0
+    with open(output_file_clear_stats, 'w', newline='') as f1:
+        # create the csv writer for stats
+        clear_stats_writer = csv.writer(f1)
+        with open(output_file_cloudless_days, 'w', newline='') as f2:
+            # create the csv writer for cloudless days
+            cloudless_writer = csv.writer(f2)
+            for i in range(n):
+                dn10 = dn1[i]
+                dn0 = dn[i]
+                mo0 = mo[i]
+                yr0 = yr[i]
+                day0 = day[i]
+
+                if day0 != dayold:
+                    x = rawpar[iold:ii]
+                    y = modpar[iold:ii]
+                    hr1 = hr[iold:ii]
+                    minute1 = minute[iold:ii]
+                    const, const1 = statsxy(x, y)
+                    sumx = (600.0 / 10 ** 6) * np.sum(x)
+                    sumy = (600.0 / 10 ** 6) * np.sum(y)
+                    clear_stats = (dn1[i - 1], dn[i - 1], dayold, mo[i - 1], yr[i - 1]) + tuple(const1[:19]) + (sumx, sumy)
+                    clear_stats_writer.writerow(clear_stats)
+                    dx = 0.10
+                    if (const1[5] <= dx or const1[5] <= dx or const1[6] <= dx or const1[7] <= dx or
+                            const1[8] <= dx or const1[9] <= dx or const1[10] <= dx or const1[11] <= dx or
+                            const1[12] <= dx or const1[13] <= dx or const1[14] <= dx or const1[15] <= dx):
+                        ratiop = sumy / sumx
+                        cloudless = (dn1[i - 1], dn[i - 1], dayold, mo[i - 1], yr[i - 1], ratiop)
+                        cloudless_writer.writerow(cloudless)
+                    dayold = day0
+                    mold = mo0
+                    yrold = yr0
+                    iold = ii
+                ii += 1
+
+pcorrB()

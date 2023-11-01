@@ -1,0 +1,202 @@
+
+#imports
+import numpy as np
+import csv
+import math
+
+#config
+# input_file = r'C:\Users\tarmstro\Python\par_qc\manuel_files\daviesA_15062021_29062023.txt'
+# input_file = r'C:\Users\tarmstro\Python\par_qc\manuel_files\daviesA_19092017_14062021\daviesA_19092017_14062021.txt' #Tilt test
+# dav1
+# input_file = r'C:\Users\tarmstro\Python\par_qc\manuel_files\data\davies1\daviesA_15062021_29062023.txt'
+# lat0 = -18.8316 * math.pi / 180.0
+# long0 = 147.6345
+# dav2
+input_file = r'C:\Users\tarmstro\Python\par_qc\manuel_files\data\davies2\daviesA_19092017_14062021.txt'
+lat0 = -18.8316 * math.pi / 180.0
+long0 = 147.6345
+# thurs20
+# input_file = r'C:\Users\tarmstro\Python\par_qc\manuel_files\data\Thurs_17_20\ThursA_17_20.txt'
+# lat0 = -10.555291 * pi / 180.0
+# long0 = 142.253283
+# thurs23
+# input_file = r'C:\Users\tarmstro\Python\par_qc\manuel_files\data\Thurs_20_23\ThursA_20_23.txt'
+# lat0 = -10.555291 * pi / 180.0
+# long0 = 142.253283
+# lizard
+# input_file = r'C:\Users\tarmstro\Python\par_qc\manuel_files\data\Lizard_20_21\LizardA_1032020_28022021.txt'
+# lat0 = -14.6915 * pi / 180.0
+# long0 = 145.466417
+
+# output_file = r'C:\Users\tarmstro\Python\par_qc\manuel_files\daviesA_19092017_14062021\processed\python_output_corrA.csv'
+output_file = r'C:\Users\tarmstro\Python\par_qc\manuel_files\processed\python_output_corrA.csv'
+
+
+
+def daynumber(day0, mo0, yr0):
+    if mo0 == 1:
+        dold = 0.0
+    elif mo0 == 2:
+        dold = 31.0
+    elif mo0 == 3:
+        dold = 59.0
+    elif mo0 == 4:
+        dold = 90.0
+    elif mo0 == 5:
+        dold = 120.0
+    elif mo0 == 6:
+        dold = 151.0
+    elif mo0 == 7:
+        dold = 181.0
+    elif mo0 == 8:
+        dold = 212.0
+    elif mo0 == 9:
+        dold = 243.0
+    elif mo0 == 10:
+        dold = 273.0
+    elif mo0 == 11:
+        dold = 304.0
+    elif mo0 == 12:
+        dold = 334.0
+    else:
+        print("No Mo0 Found?")
+
+    dn = dold + day0
+
+    # Adjustment for leap years
+    if yr0 == 2012 or yr0 == 2016 or yr0 == 2020 and day0 > 59:
+        dn = dn + 1
+    return dn
+
+def zen(lat0, long0, dn, hr0, min0):
+    # xl is a yearly time scale extending from 0 to 2 pi.
+    pi = 3.1415926
+    xl = 2.0 * pi * (dn - 1) / 365.0
+
+    dec = (
+            0.006918 - 0.399912 * np.cos(xl) + 0.07257 * np.sin(xl) -
+            0.006758 * np.cos(2.0 * xl) + 0.000907 * np.sin(2.0 * xl) -
+            0.002697 * np.cos(3.0 * xl) + 0.00148 * np.sin(3.0 * xl)
+    )
+
+    rv = (
+            1.000110 + 0.034221 * np.cos(xl) + 0.001280 * np.sin(xl) +
+            0.000719 * np.cos(2.0 * xl) + 0.000077 * np.sin(2.0 * xl)
+    )
+
+    et = (
+                 0.000075 + 0.001868 * np.cos(xl) - 0.032077 * np.sin(xl) -
+                 0.014615 * np.cos(2.0 * xl) - 0.04089 * np.sin(2.0 * xl)
+         ) * 229.18 / 60.0
+
+    # zenith angle estimated (z)
+    tst = hr0 + ((min0 + 5.0) / 60.0) - (4.0 / 60.0) * np.abs(150.0 - long0) + et
+    hrang = (12.0 - tst) * 15.0 * pi / 180.0
+    cz = np.sin(lat0) * np.sin(dec) + np.cos(lat0) * np.cos(dec) * np.cos(hrang)
+    z = (180.0 / pi) * np.arccos(cz)
+    return z, rv, et, dec
+
+def theor(z):
+    pi = 3.1415926
+    z0 = z * pi / 180.0
+    cz = np.cos(z0)
+    ptheor = -7.1165 + 768.894 * cz + 4023.167 * cz ** 2 - 4180.1969 * cz ** 3 + 1575.0067 * cz ** 4
+    return ptheor
+
+def dayseq(dnstart, yrstart, dn, yr0):
+    del1 = yr0 - yrstart
+    if yr0 == yrstart:
+        dn1 = dn - dnstart
+    elif del1 == 1:
+        dn1 = 365 - dnstart + dn
+    elif del1 == 2:
+        dn1 = 365 - dnstart + 365 + dn
+    elif del1 == 3:
+        dn1 = 365 - dnstart + 730 + dn
+    elif del1 == 4:
+        dn1 = 365 - dnstart + 1095 + dn
+    elif del1 == 5:
+        dn1 = 365 - dnstart + 1460 + dn
+    elif del1 == 6:
+        dn1 = 365 - dnstart + 1825 + dn
+    return dn1
+
+def pcorrA():
+    print("Running pcorrA...")
+    # n = 60529
+    # n = 12
+    pi = 3.1415926
+
+    # # Davies
+    # lat0 = -18.8316 * pi / 180.0
+    # long0 = 147.6345
+    #
+    # #thursday
+    # # lat0 = -10.555291 * pi / 180.0
+    # # long0 = 142.253283
+    #
+    # #lizard
+    # # lat0 = -14.6915 * pi / 180.0
+    # # long0 = 145.466417
+
+    with open(input_file, "r", encoding="utf8") as fruits_file:
+        tsv_reader = csv.reader(fruits_file, delimiter="\t")
+        day = []
+        mo = []
+        yr = []
+        hr = []
+        minute = []
+        rawpar = []
+        counter = 0
+        for row in tsv_reader:
+            counter += 1
+            (row_day, row_mo, row_yr, row_hr, row_minute, row_rawpar) = row
+            # print(row)
+            day.append(float(row_day))
+            mo.append(float(row_mo))
+            yr.append(float(row_yr))
+            hr.append(float(row_hr))
+            minute.append(float(row_minute))
+            rawpar.append(float(row_rawpar))
+    n = counter
+    day0 = day[0]
+    mo0 = mo[0]
+    yr0 = yr[0]
+    dnstart = daynumber(day0, mo0, yr0)
+    yrstart = yr[0]
+
+
+    with open(output_file, 'w', newline='') as f:
+        # create the csv writer
+        writer = csv.writer(f)
+        for i in range(n):
+            day0 = day[i]
+            mo0 = mo[i]
+            hr0 = hr[i]
+            min0 = minute[i]
+            yr0 = yr[i]
+
+            # time scale moved back 10 minutes to coincide with start of integration period.
+            # later in the program, when calculating True Solar Time (TST), 5 minutes are added
+            # to make calculation coincide with mid-point of integration period
+            min0 = min0 - 10.0
+            if min0 < 0.0:
+                min0 = 50.0
+                hr0 = hr0 - 1.0
+
+            rawpar0 = rawpar[i]
+            dn = daynumber(day0, mo0, yr0)
+            dn1 = dayseq(dnstart, yrstart, dn, yr0)
+
+            # zenith angle z estimated. if z lt 0 skip
+            if hr0 >= 5.0 and hr0 <= 19.00:
+                z = zen(lat0, long0, dn, hr0, min0)
+                if z[0] > 0.0 and z[0] < 90.0:
+                    ptheor = theor(z[0])
+                    # ptheor = ptheor * 0  # Placeholder for rv value
+                    ptheor = ptheor * z[1]  # Placeholder for rv value
+
+                    # write a row to the csv file
+                    writer.writerow((dn1, dn, day0, mo0, yr0, hr0, min0, z[0], ptheor, rawpar0))
+    return (dn1, dn, day0, mo0, yr0, hr0, min0, z[0], ptheor, rawpar0)
+pcorrA()
