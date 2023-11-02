@@ -21,12 +21,12 @@ PAR_PLOT_FILENAME = r'C:\Users\tarmstro\Python\par_qc\processed\par.png'
 # pcorrC()
 
 # config
-# input_file = r'C:\Users\tarmstro\Python\par_qc\manuel_files\data\weather_station_datasets\davies_17-21.csv'
+input_file = r'C:\Users\tarmstro\Python\par_qc\manuel_files\data\weather_station_datasets\davies_17-21.csv'
 # input_file = r'C:\Users\tarmstro\Python\par_qc\manuel_files\data\weather_station_datasets\davies_21-23.csv'
 # input_file = r'C:\Users\tarmstro\Python\par_qc\manuel_files\data\weather_station_datasets\lizard_20-21.csv'
 # input_file = r'C:\Users\tarmstro\Python\par_qc\manuel_files\data\weather_station_datasets\thurs_17_20.csv'
 # input_file = r'C:\Users\tarmstro\Python\par_qc\manuel_files\data\weather_station_datasets\thurs_20-23.csv'
-input_file = r'C:\Users\tarmstro\Python\par_qc\manuel_files\data\weather_station_datasets\test.csv'
+# input_file = r'C:\Users\tarmstro\Python\par_qc\manuel_files\data\weather_station_datasets\test.csv'
 
 # input_file = r'C:\Users\tarmstro\Python\par_qc\manuel_files\data\thurs_par_export.csv'
 pcorrA_output_file = r'C:\Users\tarmstro\Python\par_qc\processed\python_output_corrA.csv'
@@ -173,8 +173,6 @@ def daytime_dataset_setup(data):
 def get_model_corr_par(modpar_df):
     print("Calculating Model PAR..")
     print("Calculating Corrected PAR..")
-    # df = data_setup()
-    # modpar_df = daytime_dataset_setup(df)
 
     corrparr_list = []
     modpar_list = []
@@ -198,6 +196,7 @@ def get_model_corr_par(modpar_df):
     return modpar_df
 
 
+
 def pcorrB(df):
     print("Running pcorrB..")
 
@@ -218,6 +217,7 @@ def pcorrB(df):
         try:
             index_of_daily_max_rawpar = np.argmax(midday_rawpar)
             index_of_daily_max_modpar = np.argmax(midday_modpar)
+            # Tilt value = how many 10 minute periods does the max rawpar differ from max modpar
             delineation_val = index_of_daily_max_modpar - index_of_daily_max_rawpar
         # If no noon values exist (ie instrument recovered early that day), set tilt to 0
         except ValueError as error:
@@ -235,20 +235,29 @@ def pcorrB(df):
             ratiop_list.append(np.nan)
             continue
 
+        # Do we call noon at the highest par for raw or model??
+        noon_rawpar_index = np.argmax(day['rawpar'])
+        noon_modpar_index = np.argmax(day['modpar'])
+        noon_rawpar = day['rawpar'].iloc[noon_modpar_index]
+        noon_modpar = day['modpar'].iloc[noon_modpar_index]
+
         sum_rawpar = (600.0 / 10 ** 6) * np.sum(day['rawpar'])
         sum_modpar = (600.0 / 10 ** 6) * np.sum(day['modpar'])
 
         clear_stats_list.append((day['date'].iloc[0], day['dn1'].iloc[0], day['dn'].iloc[0],
                                  df['day'].iloc[0], day['month'].iloc[0], day['year'].iloc[0]) +
-                                tuple(const1[:19]) + (sum_rawpar, sum_modpar, delineation_val, old_delineation_value))
+                                tuple(const1[:19]) + (sum_rawpar, sum_modpar, delineation_val, old_delineation_value, noon_rawpar, noon_modpar))
         dx = 0.10
         if (const1[5] <= dx or const1[5] <= dx or const1[6] <= dx or const1[7] <= dx or
                 const1[8] <= dx or const1[9] <= dx or const1[10] <= dx or const1[11] <= dx or
                 const1[12] <= dx or const1[13] <= dx or const1[14] <= dx or const1[15] <= dx):
-            sum_ratio_par = sum_modpar / sum_rawpar
+            ratio_sum_par = sum_modpar / sum_rawpar
+            ratio_noon_par = noon_modpar / noon_rawpar
             cloudless_list.append((day['date'].iloc[0], day['dn1'].iloc[0], day['dn'].iloc[0],
-                                   df['day'].iloc[0], day['month'].iloc[0], day['year'].iloc[0], sum_ratio_par,
-                                   sum_rawpar, sum_modpar, delineation_val, old_delineation_value))
+                                   df['day'].iloc[0], day['month'].iloc[0], day['year'].iloc[0],
+                                   sum_rawpar, sum_modpar, ratio_sum_par,
+                                   noon_rawpar, noon_modpar, ratio_noon_par,
+                                   delineation_val, old_delineation_value))
             # ratiop_list.append(ratiop)
             clear_stats_cloudless.append(1)
             cloudless_dates.append(day['date'].iloc[0].date())
@@ -268,12 +277,15 @@ def pcorrB(df):
     # Set clear stats column names
     clear_stats_df.columns = ['date', 'dn1', 'dn', 'day', 'month', 'year', '0.1', '0.2', '0.3', '0.4', '0.5', '0.6',
                               '0.7', '0.8', '0.9', '1.0', '1.1', '1.2', '1.3', '1.4', '1.5', '1.6', '1.7', '1.8',
-                              '1.9', 'sum_rawpar', 'sum_modpar', 'tilt', 'old_tilt']
+                              '1.9', 'sum_rawpar', 'sum_modpar', 'tilt', 'old_tilt', 'noon_rawpar', 'noon_modpar']
     clear_stats_df['abs_tilt'] = np.abs(clear_stats_df['tilt'])
+
+
 
     # Build cloudless dataframe and set column names
     cloudless_df = pd.DataFrame(cloudless_list)
-    cloudless_df.columns = ['date', 'dn1', 'dn', 'day', 'month', 'year', 'sum_ratio_par', 'sum_rawpar', 'sum_modpar', 'tilt', 'old_tilt']
+    cloudless_df.columns = ['date', 'dn1', 'dn', 'day', 'month', 'year', 'sum_rawpar', 'sum_modpar', 'ratio_sum_par',
+                            'noon_rawpar', 'noon_modpar', 'ratio_noon_par', 'tilt', 'old_tilt']
     # Add cloudless flags to clear_stats
     clear_stats_df['cloudless'] = clear_stats_cloudless
 
@@ -329,28 +341,34 @@ def pcorrB(df):
     # # print(x - cloudless_df['dn1'])
 
     # checking for outliers
-    v = np.polyfit(cloudless_df['dn'], cloudless_df['sum_ratio_par'], 1)
-    residuals = cloudless_df['sum_ratio_par'] - (v[0] + v[1] * cloudless_df['dn'])
+    v = np.polyfit(cloudless_df['dn'], cloudless_df['ratio_noon_par'], 1)
+    residuals = cloudless_df['ratio_noon_par'] - (v[0] + v[1] * cloudless_df['dn'])
     z_scores = zscore(residuals)
-    filtered_indices = np.abs(z_scores) <= 2.0
+    filtered_indices = np.abs(z_scores) <= 1.1
 
     x_filt = cloudless_df['dn'][filtered_indices]
-    y_filt = cloudless_df['sum_ratio_par'][filtered_indices]
+    y_filt = cloudless_df['ratio_noon_par'][filtered_indices]
     v_filt = np.polyfit(x_filt, y_filt, 1)
     print("v = ", v_filt)
 
     corrected_ratio_list = []
+    corrected_par_list = []
     for i in range(len(cloudless_df['dn'])):
         # Remove outlier values
         if filtered_indices[i] == True:
             corrected_ratio = 0.0001221 * x_filt[i] + 0.95767
+
         else:
             corrected_ratio = np.nan
         # Use this to ignore outlier removal
         # corrected_ratio = 0.0001221 * cloudless_df['dn'][i] + 0.95767
         corrected_ratio_list.append(corrected_ratio)
+        pratio = v[0] * modpar_df['dn1'].iloc[i] + v[1]
+        corrected_par = noon_rawpar * pratio
+        corrected_par_list.append(corrected_par)
 
-    cloudless_df['corrected'] = corrected_ratio_list
+    cloudless_df['corrected_ratio'] = corrected_ratio_list
+    cloudless_df['corrected_par'] = corrected_par_list
     cloudless_df.to_csv(cloudless_output_file)
     print("Created ", cloudless_output_file)
 
@@ -360,7 +378,7 @@ def pcorrB(df):
 def build_plots(df, cloudless_df, clear_stats_df):
     # Plotting ratios
     ratio_scatter, ratio_scatter_ax = plt.subplots(figsize=(12,6))
-    ratio_scatter_ax.scatter(cloudless_df['date'], cloudless_df['sum_ratio_par'], label='pratio')
+    ratio_scatter_ax.scatter(cloudless_df['date'], cloudless_df['ratio_sum_par'], label='pratio')
     ratio_scatter_ax.scatter(cloudless_df['date'], cloudless_df['corrected'], label='corrected pratio')
     ratio_scatter_ax.legend()
     ratio_scatter_ax.title.set_text('Pratio for cloudless days')
