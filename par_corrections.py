@@ -38,6 +38,13 @@ cloudless_output_file = r'C:\Users\tarmstro\Python\par_qc\processed\cloudless.cs
 # long0 = 147.6345
 
 
+def main_func():
+    df = data_setup()
+    daytime_df = daytime_dataset_setup(df)
+    modpar_df = get_model_corr_par(daytime_df)
+    pcorrB(modpar_df)
+
+
 # Zenith angle
 def zen(lat0, long0, dn, hr0, min0):
     # xl is a yearly time scale extending from 0 to 2 pi.
@@ -98,8 +105,8 @@ def statsxy(x, y):
     return const, const1
 
 
-def pcorrA():
-    print("Running pcorrA..")
+def data_setup():
+    print("Setting up data..")
     df = pd.read_csv(input_file)
     df['date'] = pd.to_datetime(df['time']).dt.tz_convert('Etc/GMT-10')
     df['date'] = df['date'] - timedelta(minutes=10)
@@ -111,71 +118,71 @@ def pcorrA():
     df = df.rename(columns={"raw_value": "rawpar"})
     df.sort_values(by='date', inplace=True)
     data = df.copy()
+    return data
 
+def daytime_dataset_setup(data):
+    print("Extracting daytime data..")
     # Filter by time
     day_time_df = data.loc[(data['hour'] >= 5.0) | (data['hour'] <= 19.0)].copy()
 
-    lat0 = day_time_df['latitude'].iloc[0] * math.pi / 180.0
-    long0 = day_time_df['longitude'].iloc[0]
-    day0 = day_time_df['day'].iloc[0]
-    mo0 = day_time_df['month'].iloc[0]
-    yr0 = day_time_df['year'].iloc[0]
-
     # Replaces daynumber function
-    dnstart = date(yr0, mo0, day0).timetuple().tm_yday
-    # dnstart = daynumber(day0, mo0, yr0)
+    dnstart = date(day_time_df['year'].iloc[0], day_time_df['month'].iloc[0],
+                   day_time_df['day'].iloc[0]).timetuple().tm_yday
 
-    yrstart = day_time_df['year'].iloc[0]
     # Initiate lists for zenith and model_par
-    z_list = []
-    modpar_list = []
+    z_func_list = []
     dn1_list = []
     dn_list = []
 
     # Get zenith from zen()
     for i in range(len(day_time_df)):
         # zenith angle z estimated. if z lt 0 skip
-        day0 = day_time_df['day'].iloc[i]
-        mo0 = day_time_df['month'].iloc[i]
-        yr0 = day_time_df['year'].iloc[i]
-        hr0 = day_time_df['hour'].iloc[i]
-        min0 = day_time_df['minute'].iloc[i]
-
-        dn = date(yr0, mo0, day0).timetuple().tm_yday
+        dn = date(day_time_df['year'].iloc[i], day_time_df['month'].iloc[i], day_time_df['day'].iloc[i]).timetuple().tm_yday
         dn_list.append(dn)
-        z = zen(lat0, long0, dn, hr0, min0)
-        z_list.append(z)
-        del1 = yr0 - yrstart
+        z = zen(day_time_df['latitude'].iloc[0] * math.pi / 180.0, day_time_df['longitude'].iloc[0], dn, day_time_df['hour'].iloc[i], day_time_df['minute'].iloc[i])
+        z_func_list.append(z)
+        del1 = day_time_df['year'].iloc[i] - day_time_df['year'].iloc[0]
         # Dayseq algorithm
         dn1 = 365 - dnstart + ((del1 - 1) * 365) + dn
         dn1_list.append(dn1)
 
     # Build zenith lists and add to df
-    z0 = []
-    z1 = []
-    z2 = []
-    for z in z_list:
-        z0.append(z[0])
-        z1.append(z[1])
-        z2.append(z[2])
-    day_time_df['z0'] = z0
-    day_time_df['z1'] = z1
-    day_time_df['z2'] = z2
+    z_list = []
+    rv_list = []
+    et_list = []
+    dec_list = []
+    for z in z_func_list:
+        z_list.append(z[0])
+        rv_list.append(z[1])
+        et_list.append(z[2])
+        dec_list.append(z[3])
+    day_time_df['zenith_angle'] = z_list
+    day_time_df['radius_vec'] = rv_list
+    day_time_df['equ_time'] = et_list
+    day_time_df['declination'] = dec_list
     day_time_df['dn'] = dn_list
     day_time_df['dn1'] = dn1_list
     # Set df column names
     day_time_df = day_time_df[['date', 'dn', 'dn1', 'day', 'month', 'year',
-                               'hour', 'minute', 'z0', 'z1', 'z2', 'rawpar']]
+                               'hour', 'minute', 'zenith_angle', 'radius_vec', 'equ_time', 'declination', 'rawpar']]
 
     # Filter by zenith
-    modpar_df = day_time_df[(day_time_df["z0"] > 0) & (day_time_df["z0"] < 90)].copy()
-    corrparr_list = []
+    day_time_df = day_time_df[(day_time_df["zenith_angle"] > 0) & (day_time_df["zenith_angle"] < 90)].copy()
+    return day_time_df
 
+def get_model_corr_par(modpar_df):
+    print("Calculating Model PAR..")
+    print("Calculating Corrected PAR..")
+    # df = data_setup()
+    # modpar_df = daytime_dataset_setup(df)
+
+    corrparr_list = []
+    modpar_list = []
     # Get model_par
     for i in range(len(modpar_df)):
-        modpar = get_model_par(modpar_df['z0'].iloc[i])
+        modpar = get_model_par(modpar_df['zenith_angle'].iloc[i])
         # Correct for sun-earth distance (radius vector)
-        modpar = modpar * modpar_df['z1'].iloc[i]  # Placeholder for rv value
+        modpar = modpar * modpar_df['radius_vec'].iloc[i]  # Placeholder for rv value
         modpar_list.append(modpar)
 
         # Should this 'dn1/dn' value be the days into deployment??
@@ -186,26 +193,23 @@ def pcorrA():
         corrparr_list.append(corrpar)
     modpar_df['modpar'] = modpar_list
     modpar_df['corrpar'] = corrparr_list
+    modpar_df.to_csv(pcorrA_output_file)
+    print("Created ", pcorrA_output_file)
     return modpar_df
 
 
-def pcorrB():
-    df = pcorrA()
+def pcorrB(df):
     print("Running pcorrB..")
-    n = len(df)
-    dayold = df['day'].iloc[0]
+
     clear_stats_list = []
     clear_stats_cloudless = []
     cloudless_list = []
     ratiop_list = []
-    cloudless_flag_list = [0] * n
+
+    cloudless_flag_list = [0] * len(df)
     df['cloudless_flag'] = cloudless_flag_list
     cloudless_dates = []
-    df['ratiop'] = np.nan
-    daily_grouped = df.groupby(df['date'].dt.date)
-    for date, day in daily_grouped:
-        daily_rawpar = day['rawpar']
-        daily_modpar = day['modpar']
+    for date, day in df.groupby(df['date'].dt.date):
         # Restricting tilt calculation to the middle of the day (typically 11-13 hrs)
         tilt_df = day.loc[(day['hour'] >= TILT_START_TIME) & (day['hour'] < TILT_END_TIME)].copy()
         midday_rawpar = tilt_df['rawpar']
@@ -215,39 +219,35 @@ def pcorrB():
             index_of_daily_max_rawpar = np.argmax(midday_rawpar)
             index_of_daily_max_modpar = np.argmax(midday_modpar)
             delineation_val = index_of_daily_max_modpar - index_of_daily_max_rawpar
-        except ValueError as e:
-            print(e)
-            print("No midday values exist to calculate tilt on: ", date, " - Set tilt to 0""")
+        # If no noon values exist (ie instrument recovered early that day), set tilt to 0
+        except ValueError as error:
+            print(error)
+            print("No midday values exist to calculate tilt on: ", date, " - Set tilt to 0")
             delineation_val = 0
 
-        old_delineation_value = np.argmax(daily_modpar) - np.argmax(daily_rawpar)
-
-        # Samples every 10 minutes
-        # 24 hours in a day
-        # 144 samples/day
-        # Sun rotates around 360 degrees
-        # each sample is 2.5 degrees
-        # delineation value should be *2.5 to get actual tilt degrees?
+        # Tilt values without middle of the day restriction
+        old_delineation_value = np.argmax(day['modpar']) - np.argmax(day['rawpar'])
 
         try:
-            const, const1 = statsxy(daily_rawpar, daily_modpar)
+            const, const1 = statsxy(day['rawpar'], day['modpar'])
         except StatisticsError:
             # only one par value left in the day = can't get variance, so skip this day
             ratiop_list.append(np.nan)
             continue
-        sum_rawpar = (600.0 / 10 ** 6) * np.sum(daily_rawpar)
-        sum_modpar = (600.0 / 10 ** 6) * np.sum(daily_modpar)
-        # print(day)
+
+        sum_rawpar = (600.0 / 10 ** 6) * np.sum(day['rawpar'])
+        sum_modpar = (600.0 / 10 ** 6) * np.sum(day['modpar'])
+
         clear_stats_list.append((day['date'].iloc[0], day['dn1'].iloc[0], day['dn'].iloc[0],
-                                 dayold, day['month'].iloc[0], day['year'].iloc[0]) +
+                                 df['day'].iloc[0], day['month'].iloc[0], day['year'].iloc[0]) +
                                 tuple(const1[:19]) + (sum_rawpar, sum_modpar, delineation_val, old_delineation_value))
         dx = 0.10
         if (const1[5] <= dx or const1[5] <= dx or const1[6] <= dx or const1[7] <= dx or
                 const1[8] <= dx or const1[9] <= dx or const1[10] <= dx or const1[11] <= dx or
                 const1[12] <= dx or const1[13] <= dx or const1[14] <= dx or const1[15] <= dx):
-            ratiop = sum_modpar / sum_rawpar
+            sum_ratio_par = sum_modpar / sum_rawpar
             cloudless_list.append((day['date'].iloc[0], day['dn1'].iloc[0], day['dn'].iloc[0],
-                                   dayold, day['month'].iloc[0], day['year'].iloc[0], ratiop,
+                                   df['day'].iloc[0], day['month'].iloc[0], day['year'].iloc[0], sum_ratio_par,
                                    sum_rawpar, sum_modpar, delineation_val, old_delineation_value))
             # ratiop_list.append(ratiop)
             clear_stats_cloudless.append(1)
@@ -262,15 +262,8 @@ def pcorrB():
             cloudless_days.append(1)
         else:
             cloudless_days.append(0)
-    # else:
-    #     ratiop_list.append(np.nan)
 
     clear_stats_df = pd.DataFrame(clear_stats_list)
-
-    # account for (i-1) in ratiop_list
-    # ratiop_list.pop(0)
-    # ratiop_list.append(ratiop_list[-1])
-    # df['ratiop'] = ratiop_list
 
     # Set clear stats column names
     clear_stats_df.columns = ['date', 'dn1', 'dn', 'day', 'month', 'year', '0.1', '0.2', '0.3', '0.4', '0.5', '0.6',
@@ -280,7 +273,7 @@ def pcorrB():
 
     # Build cloudless dataframe and set column names
     cloudless_df = pd.DataFrame(cloudless_list)
-    cloudless_df.columns = ['date', 'dn1', 'dn', 'day', 'month', 'year', 'ratiop', 'sum_rawpar', 'sum_modpar', 'tilt', 'old_tilt']
+    cloudless_df.columns = ['date', 'dn1', 'dn', 'day', 'month', 'year', 'sum_ratio_par', 'sum_rawpar', 'sum_modpar', 'tilt', 'old_tilt']
     # Add cloudless flags to clear_stats
     clear_stats_df['cloudless'] = clear_stats_cloudless
 
@@ -322,8 +315,8 @@ def pcorrB():
     clear_stats_df.to_csv(clear_stats_output_file)
     print("Created ", clear_stats_output_file)
     # df['corrpar'] = df['rawpar'] * (0.0001221 * df['dn1'] + 0.95767)
-    df.to_csv(pcorrA_output_file)
-    print("Created ", pcorrA_output_file)
+    # df.to_csv(pcorrA_output_file)
+    # print("Created ", pcorrA_output_file)
 
     sorted_indices = np.argsort(cloudless_df['dn1'])
     # print(sorted_indices)
@@ -336,13 +329,13 @@ def pcorrB():
     # # print(x - cloudless_df['dn1'])
 
     # checking for outliers
-    v = np.polyfit(cloudless_df['dn'], cloudless_df['ratiop'], 1)
-    residuals = cloudless_df['ratiop'] - (v[0] + v[1] * cloudless_df['dn'])
+    v = np.polyfit(cloudless_df['dn'], cloudless_df['sum_ratio_par'], 1)
+    residuals = cloudless_df['sum_ratio_par'] - (v[0] + v[1] * cloudless_df['dn'])
     z_scores = zscore(residuals)
     filtered_indices = np.abs(z_scores) <= 2.0
 
     x_filt = cloudless_df['dn'][filtered_indices]
-    y_filt = cloudless_df['ratiop'][filtered_indices]
+    y_filt = cloudless_df['sum_ratio_par'][filtered_indices]
     v_filt = np.polyfit(x_filt, y_filt, 1)
     print("v = ", v_filt)
 
@@ -361,11 +354,14 @@ def pcorrB():
     cloudless_df.to_csv(cloudless_output_file)
     print("Created ", cloudless_output_file)
 
+    build_plots(df, cloudless_df, clear_stats_df)
 
+
+def build_plots(df, cloudless_df, clear_stats_df):
     # Plotting ratios
     ratio_scatter, ratio_scatter_ax = plt.subplots(figsize=(12,6))
-    ratio_scatter_ax.scatter(cloudless_df['date'], cloudless_df['ratiop'], label='pratio')
-    ratio_scatter_ax.scatter(cloudless_df['date'], corrected_ratio_list, label='corrected pratio')
+    ratio_scatter_ax.scatter(cloudless_df['date'], cloudless_df['sum_ratio_par'], label='pratio')
+    ratio_scatter_ax.scatter(cloudless_df['date'], cloudless_df['corrected'], label='corrected pratio')
     ratio_scatter_ax.legend()
     ratio_scatter_ax.title.set_text('Pratio for cloudless days')
     ratio_scatter.savefig(RATIOS_SCATTER_PLOT_FILENAME)
@@ -407,17 +403,5 @@ def pcorrB():
     print("Created plots.")
 
 
-# def build_plot(x1, y1, x2, y2, label1, label2, title, filename):
-#     ratio_scatter, ratio_scatter_ax = plt.subplots(figsize=(12, 6))
-#     ratio_scatter_ax.scatter(x1, y1, label=label1)
-#     ratio_scatter_ax.scatter(x2, y2, label=label2)
-#     ratio_scatter_ax.legend()
-#     ratio_scatter_ax.title.set_text(title)
-#     ratio_scatter.savefig(filename)
-#
-
-
-# build_plot(x, y, x, corrected_ratio_list, 'pratio', 'corrected pratio', 'Pratio for cloudless days', RATIOS_SCATTER_PLOT_FILENAME)
-# build_plot(clear_stats_df['date'], clear_stats_df['tilt'], clear_stats_df['date'], clear_stats_df['tilt_rolling_avg'], 'tilt', 'rolling_avg', 'Daily tilt values', TILT_PLOT_FILENAME)
-
-pcorrB()
+# pcorrB(get_model_corr_par())
+main_func()
