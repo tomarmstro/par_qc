@@ -341,10 +341,11 @@ def pcorrB(df):
     # # print(x - cloudless_df['dn1'])
 
     # checking for outliers
-    v = np.polyfit(cloudless_df['dn'], cloudless_df['ratio_noon_par'], 1)
+    v = np.polyfit(cloudless_df['dn'], cloudless_df['ratio_noon_par'], 1, full=True)
     residuals = cloudless_df['ratio_noon_par'] - (v[0] + v[1] * cloudless_df['dn'])
     z_scores = zscore(residuals)
     filtered_indices = np.abs(z_scores) <= 1.1
+    print(v)
 
     x_filt = cloudless_df['dn'][filtered_indices]
     y_filt = cloudless_df['ratio_noon_par'][filtered_indices]
@@ -363,8 +364,10 @@ def pcorrB(df):
         # Use this to ignore outlier removal
         # corrected_ratio = 0.0001221 * cloudless_df['dn'][i] + 0.95767
         corrected_ratio_list.append(corrected_ratio)
-        pratio = v[0] * modpar_df['dn1'].iloc[i] + v[1]
-        corrected_par = noon_rawpar * pratio
+        pratio = v[0] * cloudless_df['dn'].iloc[i] + v[1]
+        corrected_par = cloudless_df['noon_rawpar'].iloc[i] * pratio
+        print(cloudless_df['noon_rawpar'].iloc[i])
+        print(pratio)
         corrected_par_list.append(corrected_par)
 
     cloudless_df['corrected_ratio'] = corrected_ratio_list
@@ -379,7 +382,7 @@ def build_plots(df, cloudless_df, clear_stats_df):
     # Plotting ratios
     ratio_scatter, ratio_scatter_ax = plt.subplots(figsize=(12,6))
     ratio_scatter_ax.scatter(cloudless_df['date'], cloudless_df['ratio_sum_par'], label='pratio')
-    ratio_scatter_ax.scatter(cloudless_df['date'], cloudless_df['corrected'], label='corrected pratio')
+    ratio_scatter_ax.scatter(cloudless_df['date'], cloudless_df['corrected_ratio'], label='corrected pratio')
     ratio_scatter_ax.legend()
     ratio_scatter_ax.title.set_text('Pratio for cloudless days')
     ratio_scatter.savefig(RATIOS_SCATTER_PLOT_FILENAME)
