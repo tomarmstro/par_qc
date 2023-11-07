@@ -1,5 +1,5 @@
 # imports
-from sklearn.linear_model import LinearRegression
+# from sklearn.linear_model import LinearRegression
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
@@ -9,8 +9,9 @@ import math
 from datetime import timedelta, date
 from statistics import StatisticsError
 
-
-
+# Assessing tilt value only around noon (11-1)
+TILT_START_TIME = 11
+TILT_END_TIME = 13
 RATIOS_SCATTER_PLOT_FILENAME = r'C:\Users\tarmstro\Python\par_qc\processed\ratios.png'
 TILT_PLOT_FILENAME = r'C:\Users\tarmstro\Python\par_qc\processed\tilt.png'
 PAR_PLOT_FILENAME = r'C:\Users\tarmstro\Python\par_qc\processed\par.png'
@@ -40,35 +41,34 @@ def main_func():
     df = data_setup()
     daytime_df = daytime_dataset_setup(df)
 
-    modpar_df = get_model_corr_par(daytime_df)
+    daytime_model_df = get_model_corr_par(daytime_df)
 
     # Get tilt values
-    old_tilt = get_raw_tilt(modpar_df)
-    filtered_tilt = get_filtered_tilt(modpar_df)
-    abs_tilt = np.abs(get_filtered_tilt(modpar_df))
+    old_tilt = get_raw_tilt(daytime_model_df)
+    filtered_tilt = get_filtered_tilt(daytime_model_df)
+    abs_tilt = np.abs(get_filtered_tilt(daytime_model_df))
 
     # Get clear_stats and cloudless dfs
-    clear_stats_df, cloudless_df = pcorrB(modpar_df, old_tilt, filtered_tilt, abs_tilt)
+    daily_df, cloudless_df = pcorrB(daytime_model_df, old_tilt, filtered_tilt, abs_tilt)
 
     # Get tilt and cloudless flags - add to dfs
-    clear_stats_tilt_df, cloudless_tilt_df = get_consecutive_tilt(clear_stats_df, cloudless_df)
-    clear_stats_df = clear_stats_df.join(clear_stats_tilt_df)
+    clear_stats_tilt_df, cloudless_tilt_df = get_consecutive_tilt(daily_df, cloudless_df)
+    daily_df = daily_df.join(clear_stats_tilt_df)
     cloudless_df = cloudless_df.join(cloudless_tilt_df)
-    clear_stats_df = clear_stats_df.join(get_consecutive_cloudless(clear_stats_df))
-
+    daily_df = daily_df.join(get_consecutive_cloudless(daily_df))
 
     # Get corrected par
     cloudless_df, coeffs = correct_par(cloudless_df)
 
-    modpar_df['corpar'] = coeffs[0] * modpar_df['rawpar'] + coeffs[1]
-    clear_stats_df['noon_corpar'] = coeffs[0] * clear_stats_df['noon_rawpar'] + coeffs[1]
+    daytime_model_df['corpar'] = (coeffs[0] * daytime_model_df['dn1'] + coeffs[1]) * daytime_model_df['rawpar']
+    daily_df['noon_corpar'] = (coeffs[0] * daily_df['dn1'] + coeffs[1]) * daily_df['noon_rawpar']
 
-    # Save pcorrA to csv
-    modpar_df.to_csv(pcorrA_output_file)
+    # Save daytime_model_df to csv (pcorrA)
+    daytime_model_df.to_csv(pcorrA_output_file)
     print(f"Created {pcorrA_output_file} file.")
 
-    # Save clear_stats to csv
-    clear_stats_df.to_csv(clear_stats_output_file)
+    # Save daily_df to csv (clear_stats)
+    daily_df.to_csv(clear_stats_output_file)
     print(f"Created {clear_stats_output_file} file.")
 
     # Save cloudless csv file
@@ -76,7 +76,7 @@ def main_func():
     print(f"Created {cloudless_output_file} file.")
 
     # Build plots
-    build_plots(modpar_df, cloudless_df, clear_stats_df)
+    build_plots(daytime_model_df, cloudless_df, daily_df)
     print("Created plots.")
 
 
@@ -156,6 +156,7 @@ def data_setup():
     data = df.copy()
     return data
 
+
 def daytime_dataset_setup(data):
     print("Extracting daytime data..")
     # Filter by time
@@ -173,9 +174,11 @@ def daytime_dataset_setup(data):
     # Get zenith from zen()
     for i in range(len(day_time_df)):
         # zenith angle z estimated. if z lt 0 skip
-        dn = date(day_time_df['year'].iloc[i], day_time_df['month'].iloc[i], day_time_df['day'].iloc[i]).timetuple().tm_yday
+        dn = date(day_time_df['year'].iloc[i], day_time_df['month'].iloc[i],
+                  day_time_df['day'].iloc[i]).timetuple().tm_yday
         dn_list.append(dn)
-        z = zen(day_time_df['latitude'].iloc[0] * math.pi / 180.0, day_time_df['longitude'].iloc[0], dn, day_time_df['hour'].iloc[i], day_time_df['minute'].iloc[i])
+        z = zen(day_time_df['latitude'].iloc[0] * math.pi / 180.0, day_time_df['longitude'].iloc[0],
+                dn, day_time_df['hour'].iloc[i], day_time_df['minute'].iloc[i])
         z_func_list.append(z)
         del1 = day_time_df['year'].iloc[i] - day_time_df['year'].iloc[0]
         # Dayseq algorithm
@@ -201,7 +204,8 @@ def daytime_dataset_setup(data):
     day_time_df['dn1'] = dn1_list
     # Set df column names
     day_time_df = day_time_df[['date', 'dn1', 'dn', 'day', 'month', 'year',
-                               'hour', 'minute', 'intrument_serial_no', 'zenith_angle', 'radius_vec', 'equ_time', 'declination', 'rawpar']]
+                               'hour', 'minute', 'intrument_serial_no', 'zenith_angle',
+                               'radius_vec', 'equ_time', 'declination', 'rawpar']]
 
     # Filter by zenith
     day_time_df = day_time_df[(day_time_df["zenith_angle"] > 0) & (day_time_df["zenith_angle"] < 90)].copy()
@@ -219,41 +223,35 @@ def daytime_dataset_setup(data):
 
     return day_time_df
 
-def get_model_corr_par(modpar_df):
+
+def get_model_corr_par(daytime_model_df):
     print("Calculating Model PAR..")
     print("Calculating Corrected PAR..")
 
     old_corpar_list = []
     modpar_list = []
     # Get model_par
-    for i in range(len(modpar_df)):
-        modpar = get_model_par(modpar_df['zenith_angle'].iloc[i])
+    for i in range(len(daytime_model_df)):
+        modpar = get_model_par(daytime_model_df['zenith_angle'].iloc[i])
         # Correct for sun-earth distance (radius vector)
-        modpar = modpar * modpar_df['radius_vec'].iloc[i]  # Placeholder for rv value
+        modpar = modpar * daytime_model_df['radius_vec'].iloc[i]  # Placeholder for rv value
         modpar_list.append(modpar)
 
         # Should this 'dn1/dn' value be the days into deployment??
-        # pratio = 0.0001221 * modpar_df['dn1'].iloc[i] + 0.95767
-        pratio = 0.0001221 * modpar_df['dn1'].iloc[i] + 0.95767
+        # pratio = 0.0001221 * daytime_model_df['dn1'].iloc[i] + 0.95767
+        pratio = 0.0001221 * daytime_model_df['dn1'].iloc[i] + 0.95767
 
-        old_corpar = modpar_df['rawpar'].iloc[i] * pratio
+        old_corpar = daytime_model_df['rawpar'].iloc[i] * pratio
         old_corpar_list.append(old_corpar)
-    modpar_df['modpar'] = modpar_list
-    modpar_df['old_corpar'] = old_corpar_list
+    daytime_model_df['modpar'] = modpar_list
+    daytime_model_df['old_corpar'] = old_corpar_list
 
-    return modpar_df
-
-
-
-
+    return daytime_model_df
 
 
 def get_filtered_tilt(df):
-    ## assessing tilt value only around noon (11-1)
-    TILT_START_TIME = 11
-    TILT_END_TIME = 13
     delineation_vals_list = []
-    for date, day in df.groupby(df['date'].dt.date):
+    for current_date, day in df.groupby(df['date'].dt.date):
 
         # Restricting tilt calculation to the middle of the day (typically 11-13 hrs)
         tilt_df = day.loc[(day['hour'] >= TILT_START_TIME) & (day['hour'] < TILT_END_TIME)].copy()
@@ -268,7 +266,7 @@ def get_filtered_tilt(df):
         # If no noon values exist (ie instrument recovered early that day), set tilt to 0
         except ValueError as error:
             print(error)
-            print("No midday values exist to calculate tilt on: ", date, " - Set tilt to 0")
+            print("No midday values exist to calculate tilt on: ", current_date, " - Set tilt to 0")
             delineation_val = 0
             delineation_vals_list.append(delineation_val)
             continue
@@ -280,13 +278,13 @@ def get_filtered_tilt(df):
     # print("del df: ", len(filtered_delineation_df))
     return delineation_vals_list
 
+
 def get_raw_tilt(df):
     old_delineation_vals_list = []
-    for date, day in df.groupby(df['date'].dt.date):
+    for current_date, day in df.groupby(df['date'].dt.date):
         # Tilt values without middle of the day restriction
         old_delineation_val = np.argmax(day['modpar']) - np.argmax(day['rawpar'])
         old_delineation_vals_list.append(old_delineation_val)
-    # old_delineation_df = pd.DataFrame(old_delineation_vals_list, columns=['old_tilt'])
     return old_delineation_vals_list
 
 
@@ -369,10 +367,10 @@ def pcorrB(df, old_tilt, filtered_tilt, abs_tilt):
 
 
         counter += 1
-    clear_stats_df = pd.DataFrame(clear_stats_list)
+    daily_df = pd.DataFrame(clear_stats_list)
 
     # Set clear stats column names
-    clear_stats_df.columns = ['date', 'dn1', 'dn', 'day', 'month', 'year', '0.1', '0.2', '0.3', '0.4', '0.5', '0.6',
+    daily_df.columns = ['date', 'dn1', 'dn', 'day', 'month', 'year', '0.1', '0.2', '0.3', '0.4', '0.5', '0.6',
                               '0.7', '0.8', '0.9', '1.0', '1.1', '1.2', '1.3', '1.4', '1.5', '1.6', '1.7', '1.8',
                               '1.9', 'sum_rawpar', 'sum_modpar', 'noon_rawpar', 'noon_modpar',
                               'old_tilt', 'filtered_tilt', 'abs_tilt']
@@ -383,28 +381,22 @@ def pcorrB(df, old_tilt, filtered_tilt, abs_tilt):
     cloudless_df.columns = ['date', 'dn1', 'dn', 'day', 'month', 'year', 'sum_rawpar', 'sum_modpar', 'ratio_sum_par',
                             'noon_rawpar', 'noon_modpar', 'ratio_noon_par', 'old_tilt', 'filtered_tilt', 'abs_tilt']
     # Add cloudless flags to clear_stats
-    clear_stats_df['cloudless'] = clear_stats_cloudless
+    daily_df['cloudless'] = clear_stats_cloudless
 
-    return clear_stats_df, cloudless_df
-
-
+    return daily_df, cloudless_df
 
 
-def get_consecutive_tilt(clear_stats_df, cloudless_df):
+
+
+def get_consecutive_tilt(daily_df, cloudless_df):
     print("Getting consecutive tilt values")
     # Find consecutive tilt values and flag
     consecutive_tilt_count = 0
     max_consecutive_tilt_count = 4  # Number of consecutive tilt values we check for
     max_consecutive_tilt_list = []
-    # pd.set_option('display.max_columns', None)
-    # for row in clear_stats_df['abs_tilt']:
-    # for i in range(len(clear_stats_df['abs_tilt'])):
-    for value in clear_stats_df['abs_tilt']:
-        # print(clear_stats_df['abs_tilt'].loc[i])
-        # print("row: ", i)
-
+    for value in daily_df['abs_tilt']:
         try:
-            # if clear_stats_df['abs_tilt'].loc[i] >= 5:  # Tilt value we check for
+            # if daily_df['abs_tilt'].loc[i] >= 5:  # Tilt value we check for
             if value >= 5:
                 consecutive_tilt_count += 1
                 if consecutive_tilt_count >= max_consecutive_tilt_count:
@@ -421,17 +413,17 @@ def get_consecutive_tilt(clear_stats_df, cloudless_df):
     clear_stats_tilt_df = pd.DataFrame()
     cloudless_tilt_df = pd.DataFrame()
     clear_stats_tilt_df['tilted'] = max_consecutive_tilt_list
-    clear_stats_tilt_df['tilt_rolling_avg'] = clear_stats_df['filtered_tilt'].rolling(5).mean()
+    clear_stats_tilt_df['tilt_rolling_avg'] = daily_df['filtered_tilt'].rolling(5).mean()
     cloudless_tilt_df['tilt_rolling_avg'] = cloudless_df['filtered_tilt'].rolling(5).mean()
     return clear_stats_tilt_df, cloudless_tilt_df
 
 
-def get_consecutive_cloudless(clear_stats_df):
+def get_consecutive_cloudless(daily_df):
     # Find consecutive cloudless days and flag
     consecutive_cloudless_count = 0
     max_consecutive_cloudless_count = 4  # Number of consecutive cloudless days we check for
     max_consecutive_cloudless_list = []
-    for value in clear_stats_df['cloudless']:
+    for value in daily_df['cloudless']:
         if value >= 1:  # Cloudless or not - 1 for cloudless
             consecutive_cloudless_count += 1
             if consecutive_cloudless_count >= max_consecutive_cloudless_count:
@@ -513,7 +505,7 @@ def correct_par(cloudless_df):
 
 
 
-def build_plots(df, cloudless_df, clear_stats_df):
+def build_plots(df, cloudless_df, daily_df):
     # Plotting ratios
     ratio_scatter, ratio_scatter_ax = plt.subplots(figsize=(12,6))
     ratio_scatter_ax.scatter(cloudless_df['date'], cloudless_df['ratio_noon_par'], label='ratio_noon_par')
@@ -524,8 +516,8 @@ def build_plots(df, cloudless_df, clear_stats_df):
 
     # Plotting Tilt Values
     tilt_plot, tilt_plot_ax = plt.subplots(figsize=(12,6))
-    tilt_plot_ax.scatter(clear_stats_df['date'], clear_stats_df['filtered_tilt'], label='filtered_tilt', s=5)
-    tilt_plot_ax.scatter(clear_stats_df['date'], clear_stats_df['tilt_rolling_avg'], label='rolling_avg', s=5)
+    tilt_plot_ax.scatter(daily_df['date'], daily_df['filtered_tilt'], label='filtered_tilt', s=5)
+    tilt_plot_ax.scatter(daily_df['date'], daily_df['tilt_rolling_avg'], label='rolling_avg', s=5)
     tilt_plot_ax.legend()
     tilt_plot_ax.title.set_text('Daily tilt values')
     tilt_plot.savefig(TILT_PLOT_FILENAME)
