@@ -1,5 +1,6 @@
 # imports
 # from sklearn.linear_model import LinearRegression
+# import os
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
@@ -9,28 +10,34 @@ import math
 from datetime import timedelta, date
 from statistics import StatisticsError
 
+
+# test_dir = r"\\wsl.localhost\Ubuntu\home\tarmstro\libRadtran-2.0.4"
+# print(os.listdir(test_dir))
+# (test_dir + "\bin\uvspec.sh")
+
 # Assessing tilt value only around noon (11-1)
 TILT_START_TIME = 11
 TILT_END_TIME = 13
+MINIMUM_CLOUDLESS_DAYS = 5
+CLOUDLESS_THRESHOLD = 0.1
 RATIOS_SCATTER_PLOT_FILENAME = r'C:\Users\tarmstro\Python\par_qc\processed\ratios.png'
 TILT_PLOT_FILENAME = r'C:\Users\tarmstro\Python\par_qc\processed\tilt.png'
 PAR_PLOT_FILENAME = r'C:\Users\tarmstro\Python\par_qc\processed\par.png'
 
-# Run pcorrC() to run whole script
-# pcorrC()
-
 # config
 # input_file = r'C:\Users\tarmstro\Python\par_qc\manuel_files\data\weather_station_datasets\davies_17-21.csv'
-input_file = r'C:\Users\tarmstro\Python\par_qc\manuel_files\data\weather_station_datasets\davies_21-23.csv'
+# input_file = r'C:\Users\tarmstro\Python\par_qc\manuel_files\data\weather_station_datasets\davies_21-23.csv'
 # input_file = r'C:\Users\tarmstro\Python\par_qc\manuel_files\data\weather_station_datasets\lizard_20-21.csv'
 # input_file = r'C:\Users\tarmstro\Python\par_qc\manuel_files\data\weather_station_datasets\thurs_17_20.csv'
 # input_file = r'C:\Users\tarmstro\Python\par_qc\manuel_files\data\weather_station_datasets\thurs_20-23.csv'
 # input_file = r'C:\Users\tarmstro\Python\par_qc\manuel_files\data\weather_station_datasets\test.csv'
 
-# input_file = r'C:\Users\tarmstro\Python\par_qc\manuel_files\data\thurs_par_export.csv'
-pcorrA_output_file = r'C:\Users\tarmstro\Python\par_qc\processed\python_output_corrA.csv'
-clear_stats_output_file = r'C:\Users\tarmstro\Python\par_qc\processed\clear_stats.csv'
-cloudless_output_file = r'C:\Users\tarmstro\Python\par_qc\processed\cloudless.csv'
+input_file = r'C:\Users\tarmstro\Python\par_qc\manuel_files\data\weather_station_datasets\davies_par_export_reduced2.csv'
+# input_file = r'C:\Users\tarmstro\Python\par_qc\manuel_files\data\weather_station_datasets\thurs_par_export.csv'
+# input_file = r'C:\Users\tarmstro\Python\par_qc\manuel_files\data\weather_station_datasets\lizard_par_export.csv'
+# pcorrA_output_file = r'C:\Users\tarmstro\Python\par_qc\processed\python_output_corrA.csv'
+# clear_stats_output_file = r'C:\Users\tarmstro\Python\par_qc\processed\clear_stats.csv'
+# cloudless_output_file = r'C:\Users\tarmstro\Python\par_qc\processed\cloudless.csv'
 
 # dav1
 # lat0 = -18.8316 * math.pi / 180.0
@@ -39,46 +46,80 @@ cloudless_output_file = r'C:\Users\tarmstro\Python\par_qc\processed\cloudless.cs
 
 def main_func():
     df = data_setup()
-    daytime_df = daytime_dataset_setup(df)
+    site_name = df['site_name'][0]
+    print(f"Processing data from {site_name}..")
+    site_name_slice = site_name[0:6]
+    daytime_df, deployment_start_dates = daytime_dataset_setup(df)
 
-    test = get_deployments(daytime_df)
+    blank = []
+    final_daytime_model_df = pd.DataFrame(blank)
+    final_daily_df = pd.DataFrame(blank)
+    final_cloudless_df = pd.DataFrame(blank)
+    for i in range(len(deployment_start_dates)-1):
+        print("\n***************** New deployment *****************")
+        deployment_start_date = str(deployment_start_dates[i])
+        print("Deployment Start: ", deployment_start_date)
+        deployment_end_date = str(deployment_start_dates[i+1])
+        print("Deployment End: ", deployment_end_date)
+        mask = (daytime_df['date'] > deployment_start_date) & (daytime_df['date'] <= deployment_end_date)
+        masked_data = daytime_df.loc[mask]
+        daytime_model_df = get_model_corr_par(masked_data)
 
-    daytime_model_df = get_model_corr_par(daytime_df)
+        # Get tilt values
+        old_tilt = get_raw_tilt(daytime_model_df)
+        filtered_tilt = get_filtered_tilt(daytime_model_df)
+        abs_tilt = np.abs(filtered_tilt)
 
-    # Get tilt values
-    old_tilt = get_raw_tilt(daytime_model_df)
-    filtered_tilt = get_filtered_tilt(daytime_model_df)
-    abs_tilt = np.abs(get_filtered_tilt(daytime_model_df))
+        # Get clear_stats and cloudless dfs
+        daily_df, cloudless_df = build_daily_cloudless_df(daytime_model_df, old_tilt, filtered_tilt, abs_tilt)
 
-    # Get clear_stats and cloudless dfs
-    daily_df, cloudless_df = build_daily_cloudless_df(daytime_model_df, old_tilt, filtered_tilt, abs_tilt)
+        # Get tilt and cloudless flags - add to dfs
+        clear_stats_tilt_df, cloudless_tilt_df = get_consecutive_tilt(daily_df, cloudless_df)
+        daily_df = daily_df.join(clear_stats_tilt_df)
+        cloudless_df = cloudless_df.join(cloudless_tilt_df)
 
-    # Get tilt and cloudless flags - add to dfs
-    clear_stats_tilt_df, cloudless_tilt_df = get_consecutive_tilt(daily_df, cloudless_df)
-    daily_df = daily_df.join(clear_stats_tilt_df)
-    cloudless_df = cloudless_df.join(cloudless_tilt_df)
-    daily_df = daily_df.join(get_consecutive_cloudless(daily_df))
+        if len(cloudless_df) < MINIMUM_CLOUDLESS_DAYS:
+            print(f"Less than {MINIMUM_CLOUDLESS_DAYS} cloudless days in this deployment, moving to next deployment.")
+            continue
+        daily_df = daily_df.join(get_consecutive_cloudless(daily_df))
 
-    # Get corrected par
-    cloudless_df, coeffs = correct_par(cloudless_df)
+        # Get corrected par
+        cloudless_df, coeffs = correct_par(cloudless_df)
 
-    daytime_model_df['corpar'] = (coeffs[0] * daytime_model_df['dn1'] + coeffs[1]) * daytime_model_df['rawpar']
-    daily_df['noon_corpar'] = (coeffs[0] * daily_df['dn1'] + coeffs[1]) * daily_df['noon_rawpar']
+        daytime_model_df['corpar'] = (coeffs[0] * daytime_model_df['dn1'] + coeffs[1]) * daytime_model_df['rawpar']
+        daytime_model_df['coeff1'] = coeffs[0]
+        daytime_model_df['coeff2'] = coeffs[1]
 
+        daily_df['noon_corpar'] = (coeffs[0] * daily_df['dn1'] + coeffs[1]) * daily_df['noon_rawpar']
+        daily_df['coeff1'] = coeffs[0]
+        daily_df['coeff2'] = coeffs[1]
+
+        daytime_model_df.to_csv(r"C:\Users\tarmstro\Python\par_qc\processed\daily_" +
+                                site_name_slice + "_" + deployment_start_date + "_" + deployment_end_date + ".csv")
+        final_daytime_model_df = pd.concat([final_daytime_model_df, daytime_model_df], ignore_index=True)
+        daily_df.to_csv(r"C:\Users\tarmstro\Python\par_qc\processed\clearstats_" +
+                        site_name_slice + "_" + deployment_start_date + "_" + deployment_end_date + ".csv")
+        final_daily_df = pd.concat([final_daily_df, daily_df], ignore_index=True)
+        cloudless_df.to_csv(r"C:\Users\tarmstro\Python\par_qc\processed\cloudless_" +
+                            site_name_slice + "_" + deployment_start_date + "_" + deployment_end_date + ".csv")
+        final_cloudless_df = pd.concat([final_cloudless_df, cloudless_df], ignore_index=True)
     # Save daytime_model_df to csv (pcorrA)
-    daytime_model_df.to_csv(pcorrA_output_file)
+    pcorrA_output_file = rf'C:\Users\tarmstro\Python\par_qc\processed\daily_{site_name_slice}_full.csv'
+    final_daytime_model_df.to_csv(pcorrA_output_file)
     print(f"Created {pcorrA_output_file} file.")
 
     # Save daily_df to csv (clear_stats)
-    daily_df.to_csv(clear_stats_output_file)
+    clear_stats_output_file = rf'C:\Users\tarmstro\Python\par_qc\processed\clear_stats_{site_name_slice}_full.csv'
+    final_daily_df.to_csv(clear_stats_output_file)
     print(f"Created {clear_stats_output_file} file.")
 
     # Save cloudless csv file
-    cloudless_df.to_csv(cloudless_output_file)
+    cloudless_output_file = rf'C:\Users\tarmstro\Python\par_qc\processed\cloudless_{site_name_slice}_full.csv'
+    final_cloudless_df.to_csv(cloudless_output_file)
     print(f"Created {cloudless_output_file} file.")
 
     # Build plots
-    build_plots(daytime_model_df, cloudless_df, daily_df)
+    build_plots(final_daytime_model_df, final_cloudless_df, final_daily_df)
     print("Created plots.")
 
 
@@ -99,9 +140,9 @@ def zen(lat0, long0, dn, hr0, min0):
     )
 
     et = (
-                 0.000075 + 0.001868 * np.cos(xl) - 0.032077 * np.sin(xl) -
-                 0.014615 * np.cos(2.0 * xl) - 0.04089 * np.sin(2.0 * xl)
-         ) * 229.18 / 60.0
+             0.000075 + 0.001868 * np.cos(xl) - 0.032077 * np.sin(xl) -
+             0.014615 * np.cos(2.0 * xl) - 0.04089 * np.sin(2.0 * xl)
+     ) * 229.18 / 60.0
 
     # zenith angle estimated (z)
     tst = hr0 + ((min0 + 5.0) / 60.0) - (4.0 / 60.0) * np.abs(150.0 - long0) + et
@@ -162,8 +203,6 @@ def data_setup():
 def daytime_dataset_setup(data):
     print("Extracting daytime data..")
 
-
-
     # Filter by time
     day_time_df = data.loc[(data['hour'] >= 5.0) | (data['hour'] <= 19.0)].copy()
 
@@ -216,21 +255,28 @@ def daytime_dataset_setup(data):
     day_time_df = day_time_df[(day_time_df["zenith_angle"] > 0) & (day_time_df["zenith_angle"] < 90)].copy()
     dn1_counter = 0
     deployment_start_dates = []
-    deployment_start_dates.append(day_time_df['date'].iloc[0])
-    current_instrument = day_time_df['instrument_serial_no'].iloc[0]
-    for current_date, day in day_time_df.groupby(day_time_df['date'].dt.date):
-        day.loc[:, ('dn1', 0)] = dn1_counter
 
-        if day['instrument_serial_no'].iloc[0] != current_instrument:
-            print(f"Instrument changed from {current_instrument} to {day['instrument_serial_no'].iloc[0]} on {date}!")
+    # Get first date of dataset (Start of first deployment)
+    current_instrument = day_time_df['instrument_serial_no'].iloc[0]
+    deployment_start_dates.append(day_time_df['date'].dt.date.iloc[0])
+    # Check for new instrument id which indicates a new deployment
+    print("Detecting change of instruments..")
+    for current_date, day in day_time_df.groupby(day_time_df['date'].dt.date):
+        if day['instrument_serial_no'].iloc[0] != current_instrument and not pd.isna(day['instrument_serial_no'].iloc[0]):
+            print(f"Instrument changed from {current_instrument} to {day['instrument_serial_no'].iloc[0]} on {current_date}!")
             current_instrument = day['instrument_serial_no'].iloc[0]
             dn1_counter = 0
             deployment_start_dates.append(current_date)
-            print(current_date)
+
         else:
             dn1_counter += 1
-    print(deployment_start_dates)
-    return day_time_df
+
+    # Get last date of dataset (End of last deployment)
+    deployment_start_dates.append(day_time_df['date'].dt.date.iloc[-1])
+
+    # Display all deployment start/end dates
+    print("Deployment start dates: ", deployment_start_dates)
+    return day_time_df, deployment_start_dates
 
 
 def get_deployments(day_time_df):
@@ -244,11 +290,13 @@ def get_deployments(day_time_df):
 
 
 def get_model_corr_par(daytime_model_df):
-    print("Calculating Model PAR..")
-    print("Calculating Corrected PAR..")
+    print("Calculating model PAR..")
+    print("Calculating corrected PAR..")
 
     old_corpar_list = []
     modpar_list = []
+    dn1_update_list = []
+    dn1_update_counter = 1
     # Get model_par
     for i in range(len(daytime_model_df)):
         modpar = get_model_par(daytime_model_df['zenith_angle'].iloc[i])
@@ -262,10 +310,15 @@ def get_model_corr_par(daytime_model_df):
 
         old_corpar = daytime_model_df['rawpar'].iloc[i] * pratio
         old_corpar_list.append(old_corpar)
-    daytime_model_df['modpar'] = modpar_list
-    daytime_model_df['old_corpar'] = old_corpar_list
+        dn1_update_list.append(daytime_model_df['dn1'].iloc[i]-daytime_model_df['dn1'].iloc[0]+1)
+        dn1_update_counter += 1
+        # daytime_model_df['dn1'] = daytime_model_df['dn1']-daytime_model_df['dn1'].iloc[0]
+    daytime_model_df_copy = daytime_model_df.copy()
+    daytime_model_df_copy['dn1'] = dn1_update_list
+    daytime_model_df_copy['modpar'] = modpar_list
+    daytime_model_df_copy['old_corpar'] = old_corpar_list
 
-    return daytime_model_df
+    return daytime_model_df_copy
 
 
 def get_filtered_tilt(df):
@@ -284,8 +337,9 @@ def get_filtered_tilt(df):
             delineation_vals_list.append(delineation_val)
         # If no noon values exist (ie instrument recovered early that day), set tilt to 0
         except ValueError as error:
-            print(error)
-            print("No midday values exist to calculate tilt on: ", current_date, " - Set tilt to 0")
+            print("Error raised:", error, "- This means no midday values exist to calculate tilt on: ",
+                  current_date, "- Tilt is set to 0")
+            # print("No midday values exist to calculate tilt on: ", current_date, " - Set tilt to 0")
             delineation_val = 0
             delineation_vals_list.append(delineation_val)
             continue
@@ -308,7 +362,7 @@ def get_raw_tilt(df):
 
 
 def build_daily_cloudless_df(df, old_tilt, filtered_tilt, abs_tilt):
-    print("Building Daily and Cloudless Dataframes..")
+    print("Building daily and cloudless dataframes..")
     # current_instrument = df['instrument_serial_no'].iloc[0]
     daily_df_list = []
     daily_df_cloudless = []
@@ -349,20 +403,22 @@ def build_daily_cloudless_df(df, old_tilt, filtered_tilt, abs_tilt):
 
         # Collate all clear stats data
         daily_df_list.append((day['date'].iloc[0], day['dn1'].iloc[0], day['dn'].iloc[0],
-                              df['day'].iloc[0], day['month'].iloc[0], day['year'].iloc[0]) +
+                              day['day'].iloc[0], day['month'].iloc[0], day['year'].iloc[0]) +
                              tuple(const1[:19]) + (sum_rawpar, sum_modpar, noon_rawpar, noon_modpar,
                                                    old_tilt[counter], filtered_tilt[counter],
                                                    abs_tilt[counter]))
 
         # Select for cloudless days
-        dx = 0.10
-        if (const1[5] <= dx or const1[5] <= dx or const1[6] <= dx or const1[7] <= dx or
-                const1[8] <= dx or const1[9] <= dx or const1[10] <= dx or const1[11] <= dx or
-                const1[12] <= dx or const1[13] <= dx or const1[14] <= dx or const1[15] <= dx):
+        if (const1[5] <= CLOUDLESS_THRESHOLD or const1[5] <= CLOUDLESS_THRESHOLD or
+                const1[6] <= CLOUDLESS_THRESHOLD or const1[7] <= CLOUDLESS_THRESHOLD or
+                const1[8] <= CLOUDLESS_THRESHOLD or const1[9] <= CLOUDLESS_THRESHOLD or
+                const1[10] <= CLOUDLESS_THRESHOLD or const1[11] <= CLOUDLESS_THRESHOLD or
+                const1[12] <= CLOUDLESS_THRESHOLD or const1[13] <= CLOUDLESS_THRESHOLD or
+                const1[14] <= CLOUDLESS_THRESHOLD or const1[15] <= CLOUDLESS_THRESHOLD):
             ratio_sum_par = sum_modpar / sum_rawpar
             ratio_noon_par = noon_modpar / noon_rawpar
             cloudless_list.append((day['date'].iloc[0], day['dn1'].iloc[0], day['dn'].iloc[0],
-                                   df['day'].iloc[0], day['month'].iloc[0], day['year'].iloc[0],
+                                   day['day'].iloc[0], day['month'].iloc[0], day['year'].iloc[0],
                                    sum_rawpar, sum_modpar, ratio_sum_par,
                                    noon_rawpar, noon_modpar, ratio_noon_par,
                                    old_tilt[counter], filtered_tilt[counter],
@@ -400,7 +456,7 @@ def build_daily_cloudless_df(df, old_tilt, filtered_tilt, abs_tilt):
 
 
 def get_consecutive_tilt(daily_df, cloudless_df):
-    print("Getting consecutive tilt values")
+    print("Getting consecutive tilt values..")
     # Find consecutive tilt values and flag
     consecutive_tilt_count = 0
     max_consecutive_tilt_count = 4  # Number of consecutive tilt values we check for
@@ -455,15 +511,18 @@ def correct_par(cloudless_df):
     # Create empy lists
     corrected_ratio_list = []
     corrected_par_list = []
-
+    # cloudless_df = cloudless_df[(cloudless_df['ratio_noon_par'] > 2)]
+    # Additional cloudless filter (Anything over a certain raw-model par ratio can't be cloudless
+    cloudless_df = cloudless_df.drop(cloudless_df[cloudless_df['ratio_noon_par'] >= 1.5].index)
     # Variables for test
-    y = cloudless_df['ratio_noon_par']
+    # y = cloudless_df['ratio_noon_par']
+    y = cloudless_df['ratio_sum_par']
     x = cloudless_df['dn1']
     std_deviation_tolerance = 2
     degrees = 1
 
     # Fit initial polynomial test
-    coeffs = np.polyfit(cloudless_df['dn'], cloudless_df['ratio_noon_par'], 1, full=True)
+    coeffs = np.polyfit(x, y, degrees, full=True)
     fitted_curve = np.polyval(coeffs[0], x)
 
     # Get residuals (fitted data - raw data)
@@ -476,28 +535,36 @@ def correct_par(cloudless_df):
     filtered_indices = np.abs(z_scores) <= std_deviation_tolerance
 
     # Get data within standard deviation tolerance/at filterered indicies
-    y_filt = cloudless_df['dn1'][filtered_indices]
-    x_filt = cloudless_df['ratio_noon_par'][filtered_indices]
+    y_filt = y[filtered_indices]
+    x_filt = x[filtered_indices]
 
     # Rerun polynomial test with filtered data
-    coeffs_filt = np.polyfit(y_filt, x_filt, degrees)
+    coeffs_filt = np.polyfit(x_filt, y_filt, degrees, full=True)
 
     # Correction for zenith angle assumed to be 1
     correction2 = 1
 
+    print(f"First pass correction coefficients are {coeffs[0][0]} and {coeffs[0][1]}.")
+    print(f"Second pass correction coefficients are {coeffs_filt[0][0]} and {coeffs_filt[0][1]}.")
+    if abs(1 - coeffs[0][1]) <= abs(1 - coeffs_filt[0][1]):
+        used_coeffs = coeffs[0]
+    else:
+        used_coeffs = coeffs_filt[0]
+
     # Get corrected ratio and corrected par with filtered coefficients
     for i in range(len(cloudless_df['dn1'])):
+        # corrected_ratio = coeffs_filt[0] * y_filt.iloc[i] + coeffs_filt[1] * correction2
         # For all filtered values, calculate corrected ratio
-        if filtered_indices[i] is True:
-            corrected_ratio = coeffs_filt[0] * cloudless_df['dn1'].iloc[i] + coeffs_filt[1] * correction2
+        if np.abs(z_scores).iloc[i] <= std_deviation_tolerance:
+            corrected_ratio = used_coeffs[0] * cloudless_df['dn1'].iloc[i] + used_coeffs[1] * correction2
         else:
-            # If noon raw par is very low
+            # If noon raw par is very low/high
             corrected_ratio = np.nan
         corrected_ratio_list.append(corrected_ratio)
         # Use corrected ratio to calculate corrected par
         corrected_par = cloudless_df['noon_rawpar'].iloc[i] * corrected_ratio
         corrected_par_list.append(corrected_par)
-    print(f"PAR Correction Coefficients are {coeffs_filt}.")
+    print(f"PAR correction coefficients being used are {used_coeffs[0]} and {used_coeffs[1]}.")
     # # Linear Model?
     # x = np.array([x]).reshape(-1,1)
     # model = LinearRegression().fit(x, y)
@@ -509,7 +576,10 @@ def correct_par(cloudless_df):
 
     cloudless_df['corrected_ratio'] = corrected_ratio_list
     cloudless_df['corrected_par'] = corrected_par_list
-    return cloudless_df, coeffs_filt
+    # print(cloudless_df)
+    cloudless_df['coeff1'] = used_coeffs[0]
+    cloudless_df['coeff2'] = used_coeffs[1]
+    return cloudless_df, used_coeffs
 
 
 def build_plots(df, cloudless_df, daily_df):
@@ -547,9 +617,9 @@ def build_plots(df, cloudless_df, daily_df):
     par_plot_ax[3].legend()
     par_plot_ax[3].title.set_text('Difference between Raw and Corrected PAR')
 
-    par_plot_ax[4].scatter(df['date'], (df['rawpar'] - df['modpar']), label='raw/mod diff', s=1)
+    par_plot_ax[4].scatter(df['date'], (df['corpar'] - df['modpar']), label= 'cor/mod diff', s=1)
     par_plot_ax[4].legend()
-    par_plot_ax[4].title.set_text('Difference between Raw and Model PAR')
+    par_plot_ax[4].title.set_text('Difference between Corrected and Model PAR')
 
     par_plot.tight_layout(pad=5.0)
     par_plot.savefig(PAR_PLOT_FILENAME)
