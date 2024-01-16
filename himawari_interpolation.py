@@ -74,8 +74,6 @@ is exceedingly sensitive to distance and to h.
 
     """
 
-    # anykernel( dj / av dj ) is also scale-free
-    # error analysis, |f(x) - idw(x)| ? todo: regular grid, nnear ndim+1, 2*ndim
 
     def __init__(self, X, z, leafsize=10, stat=0):
         assert len(X) == len(z), "len(X) %d != len(z) %d" % (len(X), len(z))
