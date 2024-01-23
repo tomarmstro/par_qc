@@ -1,10 +1,9 @@
 manuel_files/data/
-libRadtran-2.0.4/
 __pycache__/
 *.pdf
 *.xlsx
+*.docx
 notes.txt
 libradtran.py
 *.csv
 *.png
-main.py
