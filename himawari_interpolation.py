@@ -1,9 +1,14 @@
+"""
+Interpolate data from the Himawari dataset using Inverse-Distance-Weighted Interpolation with KDTree.
+Originally written by denis-bz.
+Adapted by tarmstro
+"""
+
 from __future__ import division
 
 # %matplotlib inline
 
 from dask.distributed import Client
-
 import xarray as xr
 import numpy as np
 import pandas as pd
@@ -12,42 +17,17 @@ from scipy.spatial import cKDTree as KDTree
 import get_thredds_file
 from datetime import datetime
 import matplotlib.pyplot as plt
+from config import CONFIG
 # import time
-
 
 # client = Client(n_workers=2, threads_per_worker=2, memory_limit='1GB')
 # client
-
-
-
-# Originally written by denis-bz.
-# Adapted by Thomas Armstrong
-
-
-CSV_FILENAME = 'davies_hourly_test_19th.csv'
-
-# DATA_INTERVAL = 'daily'
-DATA_INTERVAL = 'hourly'
-
-# Davies
-TARGET_LATITUDE = -18.83162
-TARGET_LONGITUDE = 147.6345
-
-# Thurs
-# TARGET_LATITUDE = -10.555291
-# TARGET_LONGITUDE = 142.253283
-
-
-""" 
-Interpolate data from the Himawari dataset using Inverse-Distance-Weighted Interpolation with KDTree.
-"""
 
 # http://docs.scipy.org/doc/scipy/reference/spatial.html
 # https://en.wikipedia.org/wiki/Inverse_distance_weighting
 # https://en.wikipedia.org/wiki/K-d_tree
 
 # ...............................................................................
-
 
 class Invdisttree:
 
@@ -151,7 +131,7 @@ if __name__ == "__main__":
     start_time = datetime.now()
 
     # get thredds url
-    file_urls, file_count = get_thredds_file.get_thredds_file_urls(DATA_INTERVAL)
+    file_urls, file_count = get_thredds_file.get_thredds_file_urls(CONFIG['DATA_INTERVAL'])
     file_interpolation_output = []
     file_counter = 0
     # Iterate through all of our catalog's files
@@ -161,20 +141,19 @@ if __name__ == "__main__":
             print(f"\nProcessing {file_url}..")
             # open netcdf dataset
             # ds = xr.open_dataset(file_url)
-            FILTER_DEGREES = 1
             ds = xr.open_dataset(file_url, decode_times = False)
             file_date = datetime.strptime(file_url[-15:-3], '%Y%m%d%H%M')
             # .sel(time=slice(start, end)))
             # Filter the data by coordinate to reduce interpolation load - Not sure if this helps?
 
             filtered_ds = ds.where(
-                (ds['latitude'] > TARGET_LATITUDE - FILTER_DEGREES) &
-                (ds['latitude'] < TARGET_LATITUDE + FILTER_DEGREES) &
-                (ds['longitude'] > TARGET_LONGITUDE - FILTER_DEGREES) &
-                (ds['longitude'] < TARGET_LONGITUDE + FILTER_DEGREES),
+                (ds['latitude'] > CONFIG['TARGET_LATITUDE'] - CONFIG['FILTER_DEGREES']) &
+                (ds['latitude'] < CONFIG['TARGET_LATITUDE'] + CONFIG['FILTER_DEGREES']) &
+                (ds['longitude'] > CONFIG['TARGET_LONGITUDE'] - CONFIG['FILTER_DEGREES']) &
+                (ds['longitude'] < CONFIG['TARGET_LONGITUDE'] + CONFIG['FILTER_DEGREES']),
                 drop=True)
             # data = filtered_ds['daily_integral_of_surface_global_irradiance'][0].values
-            data = filtered_ds[DATA_INTERVAL + '_integral_of_surface_global_irradiance'][0].values
+            data = filtered_ds[CONFIG['DATA_INTERVAL'] + '_integral_of_surface_global_irradiance'][0].values
 
             # Convert coordinates into useable format
             x = filtered_ds['longitude'].values
@@ -204,7 +183,7 @@ if __name__ == "__main__":
             values = data.flatten()
 
             # Interpolate at the target coordinates
-            basic_interpolated_value = griddata(points, values, (TARGET_LONGITUDE, TARGET_LATITUDE), method='linear')
+            basic_interpolated_value = griddata(points, values, (CONFIG['TARGET_LONGITUDE'], CONFIG['TARGET_LATITUDE']), method='linear')
 
             # print(f'Interpolated Value at ({target_x}, {target_y}): {interpolated_value[0]}')
             print("Basic Interpolation Value: ", basic_interpolated_value)
@@ -232,7 +211,7 @@ if __name__ == "__main__":
             known_data_points = converted_data
 
             # list of target coordinates
-            target_location = [TARGET_LATITUDE, TARGET_LONGITUDE]
+            target_location = [CONFIG['TARGET_LATITUDE'], CONFIG['TARGET_LONGITUDE']]
 
             # def terrain(x):
             #     """ ~ rolling hills """
@@ -278,7 +257,7 @@ if __name__ == "__main__":
             print("Interpolated Value: ", interpolated_value)
 
             file_interpolation_output.append(
-                (file_date, TARGET_LATITUDE, TARGET_LONGITUDE, interpolated_value, interpolated_value_converted_umol,
+                (file_date, CONFIG['TARGET_LATITUDE'], CONFIG['TARGET_LONGITUDE'], interpolated_value, interpolated_value_converted_umol,
                  basic_interpolated_value, interpolated_value_difference, file_url,
                  N, Ndim, Nask, Nnear, leafsize, eps, p, cycle, seed))
             file_counter += 1
@@ -304,7 +283,7 @@ if __name__ == "__main__":
     interpol_plot.savefig('interpolated_plot.png')
 
     # saving the dataframe
-    df.to_csv(CSV_FILENAME)
+    df.to_csv(CONFIG['CSV_FILENAME'])
     print('Interpolation took: {}'.format(datetime.now() - start_time))
 
 

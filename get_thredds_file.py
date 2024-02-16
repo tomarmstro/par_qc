@@ -7,33 +7,17 @@ import calendar
 from xml.dom import minidom
 from urllib.request import urlopen
 from urllib.request import urlretrieve
-
-# Config
-# Set data interval "daily" or "hourly"
-# DATA_INTERVAL = 'daily'
-DATA_INTERVAL = 'hourly'
-
-# START_YEAR = 2019
-# START_YEAR_MONTH = 4
-START_YEAR = 2022
-START_YEAR_MONTH = 12
-
-# END_YEAR = 2023
-END_YEAR = 2022
-# END_YEAR_MONTH = 9
-END_YEAR_MONTH = 12
-
-years = list(range(START_YEAR, (END_YEAR + 1)))
-
+from config import CONFIG
 
 def get_thredds_file_urls(data_interval='daily'):
+    years = list(range(CONFIG['START_YEAR'], (CONFIG['END_YEAR'] + 1)))
     file_urls = []
     # Iterate through all the days of the months of the years given by config values and generate a list of files
     for year in years:
         if year == START_YEAR:
-            months = list(range(START_YEAR_MONTH, 13))
+            months = list(range(CONFIG['START_YEAR_MONTH'], 13))
         elif year == END_YEAR:
-            months = list(range(1, END_YEAR_MONTH))
+            months = list(range(1, CONFIG['END_YEAR_MONTH']))
         else:
             months = list(range(1, 13))
         for month in months:
@@ -49,7 +33,8 @@ def get_thredds_file_urls(data_interval='daily'):
             file_count += len(hourly_file)
     elif data_interval == 'daily':
         file_count = len(file_urls)
-    print(f"Found {file_count} {data_interval} files of  data between {calendar.month_name[START_YEAR_MONTH]}, {START_YEAR} and {calendar.month_name[END_YEAR_MONTH]}, {END_YEAR}.")
+    print(f"Found {file_count} {data_interval} files of  data between {calendar.month_name[CONFIG['START_YEAR_MONTH']]}, 
+          {CONFIG['START_YEAR']} and {calendar.month_name[CONFIG['END_YEAR_MONTH']]}, {CONFIG['END_YEAR']}.")
     return file_urls, file_count
 
 

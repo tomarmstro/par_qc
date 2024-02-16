@@ -1,4 +1,4 @@
-manuel_files/data/
+manuel_files
 __pycache__/
 *.pdf
 *.xlsx
@@ -7,3 +7,5 @@ notes.txt
 libradtran.py
 *.csv
 *.png
+old_scripts
+data

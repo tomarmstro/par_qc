@@ -3,10 +3,10 @@ import matplotlib.pyplot as plt
 from datetime import datetime, timezone
 
 # config
-input_file_pcorrA = r"C:\Users\tarmstro\Python\par_qc\processed\davies_proc\pcorrA_Davies_2021-06-24_2023-07-30.csv"
-cloudless_file = r"C:\Users\tarmstro\Python\par_qc\processed\davies_proc\cloudless_Davies_2021-06-24_2023-07-30.csv"
+input_file_pcorrA = r"C:\Users\tarmstro\Projects\par_qc\processed\davies_proc\pcorrA_Davies_2021-06-24_2023-07-30.csv"
+cloudless_file = r"C:\Users\tarmstro\Projects\par_qc\processed\davies_proc\cloudless_Davies_2021-06-24_2023-07-30.csv"
 # input_file_pcorrA = r"C:\Users\tarmstro\Python\par_qc\pcorrA_dec2022.csv"
-input_file_interpol = r"C:\Users\tarmstro\Python\par_qc\davies_hourly_test_19th.csv"
+input_file_interpol = r"C:\Users\tarmstro\Projects\par_qc\davies_hourly_test_19th.csv"
 
 # Import csv files
 df_pcorrA = pd.read_csv(input_file_pcorrA, parse_dates=['date'])
@@ -29,7 +29,7 @@ df_noon.set_index('date', inplace=True)
 df_noon = df_noon.resample('D').apply(lambda x: x.between_time('12:30', '12:30'))
 
 
-# Plots Comparing PAR Values
+# Plots Comparing PAR Values (corrected vs interp)
 corrected_vs_interpolated_plot, corrected_vs_interpolated_plot_ax = plt.subplots(1, 1, figsize=(24, 12))
 corrected_vs_interpolated_plot_ax.scatter(df_all['date'], df_all['interpolated_value (umol m-2 s-1)'], label='interpolated_value')
 corrected_vs_interpolated_plot_ax.scatter(df_all['date'], df_all['corpar'], label='corpar')
@@ -38,7 +38,7 @@ corrected_vs_interpolated_plot_ax.title.set_text('Interpolated Values')
 # interpol_plot.tight_layout(pad=5.0)
 corrected_vs_interpolated_plot.savefig('corrected_vs_interpolated_plot.png')
 #
-# # Plots Comparing PAR Values
+# # Plots Comparing PAR Values (raw vs interp)
 raw_vs_interpolated_plot, raw_vs_interpolated_plot_ax = plt.subplots(1, 1, figsize=(24, 12))
 raw_vs_interpolated_plot_ax.scatter(df_all['date'], df_all['interpolated_value (umol m-2 s-1)'], label='interpolated_value')
 raw_vs_interpolated_plot_ax.scatter(df_all['date'], df_all['rawpar'], label='rawpar')
