@@ -1,80 +1,91 @@
+"""
+Collect all urls from thredds server directory
+
+Adapted by tarmstro 10/01/2024
+"""
 #!/usr/bin/env python
-# Script to download all .nc files from a THREDDS catalog directory
-# Written by Sage 4/5/2016, revised 5/31/2018
-# adapted by tarmstro 10/01/2024
-
-import calendar
-from xml.dom import minidom
-from urllib.request import urlopen
-from urllib.request import urlretrieve
+# import calendar
+# from xml.dom import minidom
+# from urllib.request import urlopen
+# from urllib.request import urlretrieve
+# from urllib.request import HTTPError
+# import pandas as pd
 from config import CONFIG
+from siphon.catalog import TDSCatalog
+from datetime import datetime
 
-def get_thredds_file_urls(data_interval='daily'):
-    years = list(range(CONFIG['START_YEAR'], (CONFIG['END_YEAR'] + 1)))
-    file_urls = []
-    # Iterate through all the days of the months of the years given by config values and generate a list of files
-    for year in years:
-        if year == START_YEAR:
-            months = list(range(CONFIG['START_YEAR_MONTH'], 13))
-        elif year == END_YEAR:
-            months = list(range(1, CONFIG['END_YEAR_MONTH']))
-        else:
-            months = list(range(1, 13))
-        for month in months:
-            print(f"Getting files for {calendar.month_name[month]}, {year}.")
-            days = list(range(1, (calendar.monthrange(year, month)[1] + 1)))
-            # days = list(range(1, 3))
-            for day in days:
-                date_url = f"{year:04}" + '/' + f"{month:02}" + '/' + f"{day:02}" + '/'
-                file_urls.append(get_filename(date_url, data_interval))
-    if data_interval == 'hourly':
-        file_count = 0
-        for hourly_file in file_urls:
-            file_count += len(hourly_file)
-    elif data_interval == 'daily':
-        file_count = len(file_urls)
-    print(f"Found {file_count} {data_interval} files of  data between {calendar.month_name[CONFIG['START_YEAR_MONTH']]}, 
-          {CONFIG['START_YEAR']} and {calendar.month_name[CONFIG['END_YEAR_MONTH']]}, {CONFIG['END_YEAR']}.")
+
+def get_all_files(base_url, last_himawari_data_date):
+    """Get the url of all files on the thredds server from the base_url according to the year/month/day directory structure.
+
+    Args:
+        base_url (string): The base url for the intended directory within the thredds server
+        last_himawari_data_date (datetime): The last date in the local himawari data csv file. Saved to prevent needlessly rescraping the thredds server.
+
+    Returns:
+        all_files (list): A list of the urls of all relevant files on the thredds server.
+    """
+    # Initialize an empty list to store all file URLs
+    all_files = []
+
+    # Open the base catalog
+    base_catalog = TDSCatalog(base_url)
+
+    
+    # Loop over the years (sub-catalogs)
+    for year in base_catalog.catalog_refs:
+        # Check the thredds server starting from the last date in the saved himawari dataset
+        if int(year) >= last_himawari_data_date.year:
+            print(f"Checking through year: {year}.")
+            year_url = base_catalog.catalog_refs[year].href
+            year_catalog = TDSCatalog(year_url)
+            # Loop over the months (sub-catalogs)
+            for month in year_catalog.catalog_refs:
+                if ((int(year) == last_himawari_data_date.year 
+                    and int(month) >= last_himawari_data_date.month) 
+                    or int(year) > last_himawari_data_date.year):
+                    print(f"Checking through month: {month}.")
+                    month_url = year_catalog.catalog_refs[month].href
+                    month_catalog = TDSCatalog(month_url)
+                    # Loop over the days (sub-catalogs)
+                    for day in month_catalog.catalog_refs:
+                        if ((int(year) == last_himawari_data_date.year 
+                            and int(month) == last_himawari_data_date.month 
+                            and int(day) >= last_himawari_data_date.day)
+                            or (int(year) == last_himawari_data_date.year 
+                            and int(month) > last_himawari_data_date.month)
+                            or int(year) > last_himawari_data_date.year):
+                            # print(f"Checking through day: {day}.")
+                            day_url = month_catalog.catalog_refs[day].href
+                            day_catalog = TDSCatalog(day_url)
+
+                            # Loop over the hours (NetCDF files)
+                            for hour in day_catalog.datasets:
+                                hour_file_url = day_catalog.datasets[hour].access_urls['HTTPServer']
+                                all_files.append(hour_file_url)
+
+    file_count = len(all_files)
+    print(f"Found {file_count} files.")
+
+    return all_files
+
+
+def main(last_himawari_data_date):
+    """Collect all relevant thredds urls.
+
+    Args:
+        last_himawari_data_date (datetime): The last date in the local himawari data csv file. Saved to prevent needlessly rescraping the thredds server.
+
+    Returns:
+        all_files (list): A list of the urls of all relevant files on the thredds server.
+        file_count (int): Count of the number of files collected. 
+    """
+    # Specify the base URL of the THREDDS catalog
+    base_url = CONFIG['THREDDS_URL']
+
+    # Get all file URLs
+    file_urls = get_all_files(base_url, last_himawari_data_date)
+
+    file_count = len(file_urls)
+
     return file_urls, file_count
-
-
-def get_elements(url, tag_name, attribute_name):
-    # Get elements for our catalog from XML file
-    # usock = urllib2.urlopen(url)
-    usock = urlopen(url)
-    xmldoc = minidom.parse(usock)
-    usock.close()
-    tags = xmldoc.getElementsByTagName(tag_name)
-    attributes = []
-    for tag in tags:
-        attribute = tag.getAttribute(attribute_name)
-        attributes.append(attribute)
-    return attributes
-
-# Get filenames from the thredds server catalog
-def get_filename(date_url, data_interval):
-    # Check config for sample interval
-    if data_interval == 'daily':
-        interval_str = 'p1d/'
-    elif data_interval == 'hourly':
-        interval_str = 'p1h/'
-    # Thredds server specific urls
-    server_url = 'https://dapds00.nci.org.au/thredds/'
-    request_url = 'rv74/satellite-products/arc/der/himawari-ahi/solar/' + interval_str + 'latest/'
-    url = server_url + request_url + date_url + 'catalog.xml'
-    # Run get_elements func to find catalog metadata
-    catalog = get_elements(url, 'dataset', 'urlPath')
-    files = []
-    # Iterate through the generated catalog to find all netcdf files
-    for file in catalog:
-        if (file[-3:] == '.nc'):
-            # print(citem)
-            if data_interval == 'daily':
-                files.append(server_url + 'dodsC/' + file)
-            elif data_interval == 'hourly':
-                files.append(server_url + 'dodsC/' + file)
-    return files
-
-# a = urlretrieve('https://dapds00.nci.org.au/thredds/' + 'fileServer/' + 'IDE02327.201903311830.nc')
-
-# get_thredds_file_urls()
