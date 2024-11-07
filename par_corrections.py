@@ -46,14 +46,13 @@ def main():
     script_start_time = datetime.now()
     df, site_name = data_setup()
     print(f"Processing data from {site_name}..")
-    site_name_slice = site_name[0:6]
+    # site_name_slice = site_name[0:6]
     daytime_df, deployment_start_dates = daytime_dataset_setup(df)
     daytime_df = get_himawari_data(df, site_name, daytime_df)
     final_daytime_model_df, final_daily_df, final_cloudless_df, final_filtered_cloudless_df = get_corrected_par(deployment_start_dates, daytime_df, site_name)
     save_outputs(site_name, final_daytime_model_df, final_daily_df, final_cloudless_df, final_filtered_cloudless_df)
     # Build plots
     par_plots.build_plots(site_name, final_daytime_model_df, final_daily_df, final_cloudless_df, deployment_start_dates)
-    
     print(f'Processing {site_name} took: {(datetime.now() - script_start_time)}')
     
 
