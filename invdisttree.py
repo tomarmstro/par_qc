@@ -3,7 +3,7 @@ Interpolate data from the Himawari dataset using Inverse-Distance-Weighted Inter
 
 Originally written by denis-bz.
 
-Adapted by tarmstro
+Adapted by tomarmstro
 """
 
 from __future__ import division
@@ -22,7 +22,7 @@ from config import CONFIG
 class Invdisttree:
 
     """ 
-    inverse-distance-weighted interpolation using KDTree:
+    Inverse-distance-weighted interpolation using KDTree:
     invdisttree = Invdisttree( X, z )  -- data points, values
     interpol = invdisttree( q, nnear=3, eps=0, p=1, weights=None, stat=0 )
         interpolates z from the 3 points nearest each query point q;

@@ -3,7 +3,7 @@ Interpolate data from the Himawari dataset using Inverse-Distance-Weighted Inter
 
 Originally written by denis-bz.
 
-Adapted by tarmstro
+Adapted by tomarmstro
 """
 
 from __future__ import division
@@ -20,6 +20,25 @@ import invdisttree
 
 
 def interogate_himawari_csv(site_name):
+    """
+    Loads or initializes Himawari satellite data for a specified site and returns relevant data details.
+
+    This function checks for an existing CSV file containing Himawari satellite data for the given site.
+    If the file is found, it loads the data and sets the `last_himawari_data_date` to the most recent date in the file.
+    If the file does not exist, it initializes an empty dataframe with relevant columns and sets `last_himawari_data_date`
+    to the first available Himawari data date, as specified in the configuration.
+
+    Args:
+        site_name (str): The name of the site for which Himawari data is being queried. Used to locate the file.
+
+    Returns:
+        tuple:
+            - last_himawari_data_date (datetime): The date of the latest Himawari data entry if available; otherwise, 
+                                                  the first date of available Himawari data (e.g., 2019-04-01).
+            - file_interpolation_output (DataFrame): A dataframe containing either the loaded Himawari data or an initialized 
+                                                     empty structure with required columns.
+            - site_himawari_data_filename (str): The file path for the Himawari data file for the specified site.
+    """
     # Specify filename for himawari data of this specific site
     site_himawari_data_filename = rf"{CONFIG["PROCESSED_FILE_PATH"]}\himawari_interpolation\{site_name}_himawari_results.csv"
 
@@ -45,6 +64,23 @@ def interogate_himawari_csv(site_name):
 
 # def main(site_name, latitude, longitude, start_time, end_time):
 def main(site_name, latitude, longitude):
+    """
+    Main function to process and interpolate Himawari satellite data for a specified site location.
+
+    This function retrieves, processes, and interpolates Himawari satellite irradiance data files for the given
+    site's latitude and longitude coordinates. It handles data filtering, interpolation, and updates an output
+    CSV file with processed values. If the data file already contains a record, it skips the file; otherwise, 
+    it performs interpolation and saves new results. Progress is saved every 100 processed files.
+
+    Args:
+        site_name (str): The name of the site for which data is being processed, used to locate and save data files.
+        latitude (float): Latitude of the site for spatial filtering and interpolation.
+        longitude (float): Longitude of the site for spatial filtering and interpolation.
+
+    Returns:
+        DataFrame: A dataframe containing interpolated data for the specified site, including irradiance values,
+                   file URLs, and interpolation details.
+    """
     script_start_time = datetime.now()
     
     last_himawari_data_date, file_interpolation_output, site_himawari_data_filename = interogate_himawari_csv(site_name)

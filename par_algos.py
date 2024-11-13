@@ -1,14 +1,27 @@
+"""
+Script to run algorithms for the calculation of modeled PAR and a series of constants for use in selecting cloudless days.
+
+Author: Thomas Armstrong (tomarmstro)
+Created: 1/03/2024
+"""
+
 import numpy as np
 from statistics import stdev
 import math
 
 def get_model_par(z):
-    '''
-    Calculates the model PAR value based on the zenith angle
+    """
+    Calculate the modeled Photosynthetically Active Radiation (PAR) value based on the zenith angle.
 
-        Parameters:
-            z:  
-    '''
+    This function computes a modeled PAR value (in units specific to the model coefficients) based on the cosine of the zenith angle.
+    The model formula is a polynomial function that adjusts PAR based on the zenith angle of the sun.
+
+    Args:
+        z (float): The zenith angle in degrees (0-90 degrees), representing the angle between the sun and the vertical direction.
+
+    Returns:
+        float: Modeled PAR value adjusted by the zenith angle, using polynomial regression.
+    """
     pi = 3.1415926
     z0 = z * pi / 180.0
     # Get cosine of zenith angle
@@ -18,15 +31,19 @@ def get_model_par(z):
 
 
 def statsxy(x, y):
-    """Generates constants based on x, y
+    """
+    Calculate statistical constants representing deviations between observed and modeled PAR values.
+
+    This function generates two lists of constants that quantify the differences between `x` (observed PAR values) and scaled versions of `y` (modeled PAR values). For each scaling factor, it computes the standard deviation of the difference between `x` and the scaled `y` values, as well as the standard deviation normalized by the maximum of `y`.
 
     Args:
-        x (list): raw par values
-        y (list): model par values
+        x (list or np.array): Observed PAR values.
+        y (list or np.array): Modeled PAR values.
 
     Returns:
-        const (list of lists): _description_
-        const1 (list of lists)
+        tuple: A tuple containing:
+            - const (list): Standard deviations of differences between `x` and `y` scaled by a decreasing factor.
+            - const1 (list): Normalized standard deviations of differences between `x` and scaled `y`, where each standard deviation is divided by the maximum value of `y`.
     """
 
     const = []
@@ -44,20 +61,24 @@ def statsxy(x, y):
 
 # Zenith angle
 def zen(lat0, long0, dn, hr0, min0):
-    """Calculates the zenith angle and associated variables based on the latitude and time.
+    """
+    Calculate the solar zenith angle and associated parameters based on geographic location and time.
+
+    This function determines the zenith angle (z), radius vector (rv), equation of time (et), and solar declination (dec) for a given latitude, longitude, day of the year, hour, and minute. These values are useful for solar irradiance and solar position calculations.
 
     Args:
-        lat0 (_type_): _description_
-        long0 (_type_): _description_
-        dn (_type_): _description_
-        hr0 (_type_): _description_
-        min0 (_type_): _description_
+        lat0 (float): Latitude in radians.
+        long0 (float): Longitude in degrees.
+        dn (int): Day of the year (1 to 365).
+        hr0 (int): Hour of the day (24-hour format).
+        min0 (int): Minute of the hour.
 
     Returns:
-        z (_type_): Zenith angle
-        rv (_type_): Raduis vector
-        et (_type_): Equation of time
-        dec (_type_): Declination
+        tuple: A tuple containing:
+            - z (float): Solar zenith angle in degrees.
+            - rv (float): Radius vector, representing Earth's distance from the Sun in astronomical units.
+            - et (float): Equation of time in hours, which accounts for Earth's elliptical orbit and axial tilt.
+            - dec (float): Solar declination in radians, indicating the angle between Earth's equatorial plane and the Sun's rays.
     """
 
     # xl is a yearly timescale extending from 0 to 2 pi.

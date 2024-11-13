@@ -1,7 +1,8 @@
 """
-Collect all urls from thredds server directory
+Collect relevant urls from a thredds server.
 
-Adapted by tarmstro 10/01/2024
+Author: Thomas Armstrong (tomarmstro)
+Created: 1/03/2024
 """
 #!/usr/bin/env python
 # import calendar

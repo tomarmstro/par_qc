@@ -10,4 +10,4 @@ processed/
 venv/
 docstring_wrapper_dev.py
 .idea
-
+config.py

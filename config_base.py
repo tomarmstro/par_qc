@@ -10,6 +10,7 @@ CONFIG["BASE_FILE_PATH"] = r'C:\Users\tarmstro\Projects'
 CONFIG["PROCESSED_FILE_PATH"] = r'C:\Users\tarmstro\Projects\par_qc_ta\processed'
 CONFIG["INPUT_FILE"] = r'C:\Users\tarmstro\Projects\par_qc_ta\data\Cleveland_Bay_PAR_2012_2024.csv'
 
+
 # PAR corrections constants
 CONFIG["MINIMUM_CLOUDLESS_DAYS"] = 5
 CONFIG["CLOUDLESS_THRESHOLD"] = 0.1

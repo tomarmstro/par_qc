@@ -1,17 +1,17 @@
 """
 Main file for AIMS historical weather station surface PAR dataset corrections.
 
-Author: tarmstro
+Author: Thomas Armstrong (tomarmstro)
+Created: 1/03/2024
 """
 
 # imports
 from sklearn.linear_model import LinearRegression
-import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 from scipy.stats import zscore
 import math
-from datetime import timedelta, date
+from datetime import date
 from statistics import StatisticsError
 import par_algos
 import par_plots
@@ -22,26 +22,33 @@ from datetime import datetime
 # config
 from config import CONFIG
 
-# dev only
-from docstring_wrapper_dev import log_args_and_types
-
-# TODO: Adjust main() so it is less of a mess
-# TODO: Adjust the file intake - using config for the input file path is clunky - consider a basic file selection gui?
-# TODO: Better visualisations - Assess if it is worth using plotly for better interactivity of plots (par_plots)
-# TODO: Validation of outputs?
-# TODO: Continue with/finish docstrings.
-# TODO: Write an appropriate README.
-# TODO: Should solar noon be calculated with raw or model par?
-# TODO: Can we screen shadows out of daily data - Look at the ratio of raw par to model par to identify shadows according to some cutoff?
-# TODO: Check the new csv for Cloudless days with outlier days removed - Make the output section neater regarding this
-# TODO: Is the pratio correction based on the entire deployment? Does missing data in a deployment cause issues here?
+"""
+TODO: Implement daytime filter - Either a time threshold, zenith angle or incorporate Vinny's code?
+TODO: Adjust main() so it is less of a mess
+TODO: Adjust the file intake - using config for the input file path is clunky - consider a basic file selection gui?
+TODO: Better visualisations - Assess if it is worth using plotly for better interactivity of plots (par_plots) - Which plots to produce routinely
+TODO: Validation of outputs?
+TODO: Should solar noon be calculated with raw or model par?
+TODO: Can we screen shadows out of daily data - Look at the ratio of raw par to model par to identify shadows according to some cutoff?
+TODO: Check the new csv for Cloudless days with outlier days removed - Make the output section neater regarding this
+TODO: Is the pratio correction based on the entire deployment? Does missing data in a deployment cause issues here?
+"""
 
 def main():
     """
-    
-    Main script - Runs all other functions. 
+    Main function to process, analyze, and save PAR data with correction and visualization.
 
-    """   
+    This script coordinates the execution of all processing steps, including setting up data, 
+    fetching and interpolating Himawari satellite data, applying PAR corrections, and saving the 
+    output. It also generates plots to visualize the processed data for quality assurance.
+
+    Workflow:
+        1. Initializes data setup and retrieves site-specific details.
+        2. Prepares the daytime dataset and fetches Himawari data for interpolation.
+        3. Corrects PAR data using daytime dataset and deployment start dates.
+        4. Saves the processed datasets and generates plots for visualization.
+
+    """
 
     script_start_time = datetime.now()
     df, site_name = data_setup()
@@ -57,16 +64,25 @@ def main():
     
 
 def get_himawari_data(df, site_name, daytime_df):
-    """    
-    Get himawari data from the nci thredds server. 
-    Data is hourly and will be linearly interpolated to fill data gaps.
-    Interpolation of the data is performed by Inverse-Distance-Weighted Interpolation using KDTree as described in indisttree.py
-    Himawari data on the thredds server starts on 01/04/2019.
+    """
+    Retrieves and interpolates Himawari satellite data from the NCI THREDDS server and merges it with provided daytime data.
+
+    This function accesses hourly Himawari satellite data available from 01/04/2019 onwards, filling data gaps through 
+    linear interpolation. Interpolation is performed using Inverse-Distance-Weighted (IDW) interpolation with KDTree 
+    as implemented in `indisttree.py`. The resulting data, which includes converted photosynthetically active radiation 
+    (PAR) values, is then merged into a filtered DataFrame containing daytime values.
 
     Args:
-        df (DataFrame): Dataframe containing PAR data, latitude, longitude, times.
-        site_name (string): _description_
-        daytime_df (DataFrame): Dataframe containing PAR data etc which has been filtered to only include daytime values.
+        df (DataFrame): Input DataFrame containing latitude, longitude, times, and initial PAR data.
+        site_name (str): Name of the site for which data is being retrieved.
+        daytime_df (DataFrame): DataFrame of filtered daytime values with PAR data to be merged with Himawari data.
+
+    Returns:
+        DataFrame: The updated `daytime_df` containing merged Himawari interpolated data with 10-minute resampling.
+    
+    Raises:
+        TypeError: If Himawari data is unavailable or if merging fails, an error message is printed.
+
     """
     # Get himawari data
     himawari_interpolated = himawari_interpolation.main(site_name, df['latitude'][0], df['longitude'][0])
@@ -91,15 +107,16 @@ def get_himawari_data(df, site_name, daytime_df):
 
 def resample_10_min(data):
     """
-    Linearly interpolate all himawari data to 10 minute intervals from the hourly interval on the thredds server.
-    This is done using the resample() function
+    Resamples Himawari data to 10-minute intervals and linearly interpolates to fill gaps.
 
     Args:
-        data (DataFrame): Dataframe containing PAR data etc along with hourly himawari data.
+        data (DataFrame): Input DataFrame with Himawari PAR data at hourly intervals.
 
     Returns:
-        df_interpolated (DataFrame): Dataframe containing the now resampled himawari data along with PAR etc.
+        df_interpolated (DataFrame): Resampled and interpolated DataFrame containing 10-minute interval data with the 
+                   'himawari_resampled' column.
     """
+
     # Sample DataFrame (with time in hourly increments)
     df = pd.DataFrame(data)
 
@@ -121,11 +138,20 @@ def resample_10_min(data):
 
 
 def data_setup():
-    """Initial basic wrangling of raw PAR data and associated metadata. Adjusting types, timezone etc.
+    """
+    Performs initial data wrangling on raw PAR data and associated metadata.
+
+    This function reads PAR data from a specified input file, processes columns, and prepares 
+    metadata by adjusting data types, handling timezones, and formatting timestamps. It extracts 
+    key date and time components for easier data manipulation and analysis, renames certain columns, 
+    and sorts the data chronologically by date.
 
     Returns:
-        data(Dataframe): Dataframe containing all raw PAR data and associated metadata.
+        tuple: A tuple containing:
+            - data (DataFrame): A DataFrame of processed PAR data.
+            - site_name (str): The name of the site, formatted to replace spaces with underscores.
     """
+
     print("Setting up data..")
     df = pd.read_csv(CONFIG["INPUT_FILE"])
     site_name = df['site_name'][0].replace(" ", "_")
@@ -146,15 +172,26 @@ def data_setup():
 
 
 def daytime_dataset_setup(data):
-    """Further basic data wrangling, generating zenith metadata, deployment start/end etc.
+    """
+    Prepares a dataset containing only daytime PAR (Photosynthetically Active Radiation) values and 
+    associated metadata, including zenith angle calculations and deployment dates.
+
+    This function filters the provided data to isolate daytime observations, calculates zenith angles 
+    based on latitude, longitude, and time, and creates additional columns with astronomical metadata 
+    (e.g., zenith angle, radius vector, equation of time, and declination) to support light-related 
+    analyses. It also identifies deployment start and end dates based on changes in instrument serial 
+    numbers, recording each deployment period.
 
     Args:
-        data (DataFrame): Dataframe containing raw data with some wrangling applied
+        data (DataFrame): A DataFrame containing initial wrangled PAR data with date and time components.
 
     Returns:
-        day_time_df (Dataframe): Dataframe containing only daytime PAR values and associated metadata.
-        deployment_start_dates (list): List of deployment start dates.
+        tuple: 
+            - day_time_df (DataFrame): A DataFrame of daytime PAR data and metadata, including 
+              zenith angle and deployment timing.
+            - deployment_start_dates (list): A list of dates marking the start of each deployment period.
     """
+
     print("Extracting daytime data..")
 
     # Filter by time (All data between two specific times/hours)
@@ -236,14 +273,22 @@ def daytime_dataset_setup(data):
 
 
 def get_deployments(day_time_df):
-    """Get the start dates of all deployments in the dataset.
+    """
+    Extracts the start dates of all instrument deployments based on daily sequence markers.
+
+    This function identifies the start of each deployment period in the provided dataset, where 
+    deployments are marked by a specific sequence value ('dn1' = 0) that indicates the first day 
+    of a new deployment. Deployment start dates are recorded and returned as a list, which can be 
+    used to track deployment periods for data analysis or reporting.
 
     Args:
-        day_time_df (Dataframe): Dataframe containing PAR data filtered to exclude night time.
+        day_time_df (DataFrame): A DataFrame containing daytime PAR data, with deployment day numbers (dn1) 
+                                 and date information.
 
     Returns:
-        deployment_start_dates (list): List of deployment start dates.
+        deployment_start_dates (list): A list of dates marking the start of each deployment period.
     """
+
     deployment_start_dates = []
     for i in range(len(day_time_df)):
         if day_time_df['dn1'].iloc[i] == 0:
@@ -253,15 +298,23 @@ def get_deployments(day_time_df):
     return deployment_start_dates
 
 
-def get_model_corr_par(daytime_model_df):
-    """Build a model of the expected PAR values and get the old corrected PAR values ("old" method) 
+def get_modpar_oldcorpar(daytime_model_df):
+    """
+    Computes modelled and corrected Photosynthetically Active Radiation (PAR) values for daytime observations.
+
+    This function builds a model of expected PAR values based on zenith angle and corrects the raw PAR data 
+    using an empirical ratio ("old" method). It applies a quality control (QC) flag to identify observations 
+    where the model-to-observed PAR ratio exceeds a configured threshold. 
 
     Args:
-        daytime_model_df (DataFrame): Dataframe containing both raw and model PAR data filtered to exclude night time.
+        daytime_model_df (DataFrame): DataFrame containing daytime PAR observations with associated metadata 
+                                      such as zenith angle and radius vector.
 
     Returns:
-        daytime_model_df_updated (Dataframe): Dataframe containing PAR data filtered to exclude night time with model and corrected par values appended.
+        daytime_model_df_updated (Dataframe): Updated DataFrame with appended columns for modelled PAR (`modpar`), corrected PAR 
+                   (`old_corpar`), deployment day sequence (`dn1`), and QC flag (`qc_flag`). 
     """
+
     print("Calculating model PAR..")
 
     old_corpar_list = []
@@ -304,13 +357,20 @@ def get_model_corr_par(daytime_model_df):
 
 
 def get_filtered_tilt(df):
-    """Assess how far the apparent maximum par is from the model to calculate tilt with a midday filter.
+    """
+    Calculates tilt values by comparing the timing of peak observed PAR to peak modelled PAR within a midday window.
+
+    This function assesses potential tilt in the sensor setup by determining the time shift between 
+    observed (raw) and modelled peak PAR values during midday (typically between 11 AM and 1 PM). 
+    A time shift between the peaks suggests possible tilt, which this function records as the difference 
+    in 10-minute intervals between maximum observed and modelled PAR values. 
 
     Args:
-        df (DataFrame): Dataframe of all PAR data and associated metadata
+        df (DataFrame): DataFrame containing raw and modelled PAR data with associated metadata.
 
     Returns:
-        delineation_vals_list (list): List of how many 10 minute periods the maximum raw PAR value differs from the maximum model PAR values (used as approx tilt).
+        delineation_vals_list (list): List of time differences in 10-minute intervals between maximum observed and modelled PAR values 
+              for each day in the dataset. If no midday data is available, a tilt value of 0 is assigned.
     """
     delineation_vals_list = []
     for current_date, day in df.groupby(df['date'].dt.date):
@@ -329,30 +389,32 @@ def get_filtered_tilt(df):
         except ValueError as error:
             print("Error raised:", error, "- This means no midday values exist to calculate tilt on: ",
                   current_date, "- Tilt is set to 0")
-            # print("No midday values exist to calculate tilt on: ", current_date, " - Set tilt to 0")
             delineation_val = 0
             delineation_vals_list.append(delineation_val)
             continue
 
-    # print(delineation_vals_list)
-    # filtered_delineation_df = pd.DataFrame(delineation_vals_list, columns=['filtered_tilt'])
-    # print(filtered_delineation_df)
-    # filtered_delineation_df['abs_tilt'] = np.abs(filtered_delineation_df['filtered_tilt'])
-    # print("del df: ", len(filtered_delineation_df))
     return delineation_vals_list
 
 
 def get_raw_tilt(df):
-    """Assess how far the apparent maximum par is from the model to calculate tilt. 
+    """
+    Calculates tilt values based on the timing difference between peak observed PAR and peak modelled PAR values.
+
+    This function identifies potential sensor tilt by determining the offset in 10-minute intervals 
+    between the maximum raw PAR value (observed) and the maximum modelled PAR value over a full day. 
+    Unlike filtered tilt calculations, this method assesses tilt without limiting to midday hours.
 
     Args:
-        df (DataFrame): Dataframe of all PAR data and associated metadata
+        df (DataFrame): DataFrame containing raw and modelled PAR data with associated metadata.
 
     Returns:
-        raw_delineation_vals_list (list): List of how many 10 minute periods the maximum raw PAR value differs from the maximum model PAR values (used as approx tilt).
+        raw_delineation_vals_list (list): List of time differences in 10-minute intervals between maximum observed and modelled PAR values 
+              for each day in the dataset. Positive values suggest modelled peaks occur after observed peaks, 
+              indicating possible tilt.
     """
+
     raw_delineation_vals_list = []
-    for current_date, day in df.groupby(df['date'].dt.date):
+    for day in df.groupby(df['date'].dt.date):
         # Tilt values without middle of the day restriction
         raw_delineation_val = np.argmax(day['modpar']) - np.argmax(day['rawpar'])
         raw_delineation_vals_list.append(raw_delineation_val)
@@ -360,21 +422,28 @@ def get_raw_tilt(df):
 
 
 def build_daily_cloudless_df(daytime_model_df, raw_tilt, filtered_tilt, abs_tilt):
-    """Filters and condenses the wrangled raw dataframe into daily values of daytime data and then further filters to exclude cloudy days
+    """
+    Condenses daytime PAR data to daily values and filters for cloudless days based on tilt and clear-sky criteria.
+
+    This function compiles daily summaries of PAR data by aggregating key statistics (e.g., noon PAR ratios, 
+    total daily PAR) and calculating tilt indicators for each day. A cloudless flag is then applied to days 
+    that meet specified clear-sky conditions, enabling isolation of cloud-free data for further analysis.
 
     Args:
-        df (DataFrame): _description_
-        raw_tilt (list): Raw tilt list
-        filtered_tilt (list): Filtered tilt list
-        abs_tilt (ndarray): Absolute tilt array
+        daytime_model_df (DataFrame): DataFrame containing raw and modelled PAR data with additional 
+                                      metadata, filtered to exclude nighttime data.
+        raw_tilt (list): List of raw tilt values calculated without midday filtering.
+        filtered_tilt (list): List of tilt values with midday filtering.
+        abs_tilt (ndarray): Array of absolute tilt values between raw and model PAR peaks.
 
     Returns:
-        daily_df (Dataframe): Dataframe containing data condensed down to daily values of daytime data
-        cloudless_df (Dataframe): Dataframe containing data condensed down to daily values of daytime data filtered to only include cloudless days
+        tuple: A tuple containing:
+            - daily_df (DataFrame): DataFrame of daily PAR data summaries with associated tilt and cloudless flags.
+            - cloudless_df (DataFrame): DataFrame of daily data filtered to include only cloudless days, 
+                                        with PAR statistics and tilt information.
     """
 
     print("Building daily and cloudless dataframes..")
-    # current_instrument = df['instrument_serial_no'].iloc[0]
     daily_df_list = []
     daily_df_cloudless = []
     cloudless_list = []
@@ -384,8 +453,9 @@ def build_daily_cloudless_df(daytime_model_df, raw_tilt, filtered_tilt, abs_tilt
     cloudless_dates = []
     counter = 0
 
-    for current_date, day in daytime_model_df.groupby(daytime_model_df['date'].dt.date):
+    for day in daytime_model_df.groupby(daytime_model_df['date'].dt.date):
         try:
+            # Filter daytime values by zenith value
             # filtered_day = day[(day['zenith_angle'] >= 0) & (day['zenith_angle'] <= 90)]
             const, const1 = par_algos.statsxy(day['rawpar'], day['modpar'])
         except StatisticsError:
@@ -450,18 +520,24 @@ def build_daily_cloudless_df(daytime_model_df, raw_tilt, filtered_tilt, abs_tilt
 
 
 def get_consecutive_tilt(daily_df, cloudless_df):
-    """Added functionality of rolling tilt count.
+    """
+    Identifies periods of consecutive tilt in the PAR data to detect potential instrument misalignment or movement.
 
-    Functionality enables us to see where instruments may have fallen or otherwise moved for extended periods.
+    This function analyzes tilt values and identifies sequences where the tilt remains above a certain threshold 
+    for an extended period, which could indicate that the instrument may have fallen or shifted. It then calculates 
+    a rolling average of tilt for smoother data interpretation and adds consecutive tilt flags to the daily DataFrames.
 
     Args:
-        daily_df (Dataframe): Dataframe of daily PAR values.
-        cloudless_df (Dataframe): Dataframe of daily PAR values excluding all cloudless days.
+        daily_df (DataFrame): DataFrame containing daily PAR values and associated tilt data for all days.
+        cloudless_df (DataFrame): DataFrame containing daily PAR values and tilt data for cloudless days only.
 
     Returns:
-        daily_tilt_df (Dataframe): Dataframe of daily PAR values with consecutive tilt values added.
-        cloudless_tilt_df (Dataframe): Dataframe of daily PAR values excluding all cloudless days with consecutive tilt values added.
+        tuple: A tuple containing:
+            - daily_tilt_df (DataFrame): DataFrame with a column indicating whether consecutive tilt was detected 
+                                         and a rolling average of tilt over 5 days.
+            - cloudless_tilt_df (DataFrame): DataFrame with a rolling average of tilt for cloudless days only.
     """
+
     print("Getting consecutive tilt values..")
     # Find consecutive tilt values and flag
     consecutive_tilt_count = 0
@@ -492,14 +568,24 @@ def get_consecutive_tilt(daily_df, cloudless_df):
 
 
 def get_consecutive_cloudless(daily_df):
-    """Adding count of cloudless days and recording where the max_count is exceeded.
+    """
+    Identifies and flags sequences of consecutive cloudless days in the data, indicating whether 
+    the number of consecutive cloudless days exceeds a specified threshold.
+
+    This function scans through the `cloudless` column of the provided DataFrame and counts 
+    consecutive cloudless days. If the count exceeds a predefined threshold, it flags those days 
+    with a `1`, otherwise, it flags them with a `0`.
 
     Args:
-        daily_df (Dataframe): Dataframe of daily PAR values.
+        daily_df (DataFrame): DataFrame containing daily PAR values, including a `cloudless` column
+                               where `1` indicates a cloudless day and `0` indicates a non-cloudy day.
 
     Returns:
-        consec_cloudless_df (Dataframe): Dataframe of daily PAR values with added column tracking consecutive cloudless days with a 1 or 0 for exceeding the max_count or not.
+        DataFrame: A DataFrame with a new column, `consec_clouds`, that contains a `1` for each 
+                   day that is part of a sequence of consecutive cloudless days exceeding the threshold, 
+                   and `0` otherwise.
     """
+
     # Find consecutive cloudless days and flag
     consecutive_cloudless_count = 0
     max_consecutive_cloudless_count = 4  # Number of consecutive cloudless days we check for
@@ -520,26 +606,35 @@ def get_consecutive_cloudless(daily_df):
 
 
 def get_correction_coeffs(cloudless_df):
-    """Calculation of corrected PAR coefficients.
+    """
+    Calculates corrected PAR (photosynthetically active radiation) coefficients by fitting a polynomial model 
+    to cloudless day data and filtering out outliers based on residuals' standard deviation. It compares the 
+    polynomial fit to a linear model to determine the best fit for correction, then applies the selected coefficients 
+    to compute corrected PAR values.
 
-    Polynomial fit test run with specified degrees of freedom. Outliers are then filtered out based on specified standard deviation.
-    Polynomial fit test then run again on filtered data. 
-    A linear fit test is also run with a comparison printed in the console. 
-
-    Using the coefficients from each test the best fit is established and these coefficients are then used for the correction.
+    The function first performs a polynomial fit on the provided data and calculates residuals. Outliers, based on 
+    the standard deviation of residuals, are excluded, and the polynomial fit is recalculated using the filtered data. 
+    A linear regression model is also applied for comparison. The best polynomial fit is chosen based on which has 
+    coefficients closest to those expected (i.e., coefficient values closer to 1). The corrected PAR values are then 
+    calculated using the selected polynomial coefficients.
 
     Args:
-        cloudless_df (Dataframe): Dataframe of daily PAR values excluding cloudy days.
+        cloudless_df (DataFrame): DataFrame of daily PAR values excluding cloudy days, with columns 
+                                  for 'ratio_sum_par', 'dn1', and 'noon_rawpar'.
 
     Returns:
-        cloudless_df (Dataframe): Dataframe of daily PAR values excluding cloudy days with corrected PAR values.
-        used_coeffs (List): List of the coefficients used from the polynomial test.
+        tuple: 
+            - cloudless_df (DataFrame): Input DataFrame with additional columns for corrected PAR values, 
+                                        polynomial coefficients, and linear model coefficients.
+            - used_coeffs (List): List containing the coefficients used for the correction (from the best-fit polynomial).
+            - filtered_cloudless_df (DataFrame): DataFrame containing only cloudless data points that passed the 
+                                                  outlier filtering based on standard deviation.
     """
+
     # Correcting PAR
     # Create empy lists
     corrected_ratio_list = []
     corrected_par_list = []
-    # cloudless_df = cloudless_df[(cloudless_df['ratio_noon_par'] > 2)]
     # Additional cloudless filter (Anything over a certain raw-model par ratio can't be cloudless
     cloudless_df = cloudless_df.drop(cloudless_df[cloudless_df['ratio_noon_par'] >= CONFIG['RATIO_THRESHOLD']].index)
     # Variables for test
@@ -557,7 +652,6 @@ def get_correction_coeffs(cloudless_df):
     z_scores = zscore(residuals)
     # Get indicies of values within standard deviation tolerance
     filtered_indices = np.abs(z_scores) <= std_deviation_tolerance
-    
     # Get data within standard deviation tolerance/at filterered indicies (remove outliers)
     y_filt = y[filtered_indices]
     x_filt = x[filtered_indices]
@@ -577,7 +671,6 @@ def get_correction_coeffs(cloudless_df):
 
     # Get corrected ratio and corrected par with filtered coefficients
     for i in range(len(cloudless_df['dn1'])):
-        # corrected_ratio = coeffs_filt[0] * y_filt.iloc[i] + coeffs_filt[1] * zenith_correction
         # For all filtered values, calculate corrected ratio
         if np.abs(z_scores).iloc[i] <= std_deviation_tolerance:
             corrected_ratio = used_coeffs[0] * cloudless_df['dn1'].iloc[i] + used_coeffs[1] * zenith_correction
@@ -619,17 +712,31 @@ def get_correction_coeffs(cloudless_df):
 
 
 def get_corrected_par(deployment_start_dates, decamin_df, site_name):
-    """Run through main functions to get tilt, clear stats, cloudless days, par coefficients and finally corrected par values.
+    """
+    Processes PAR (photosynthetically active radiation) data for multiple deployments, 
+    including the calculation of corrected PAR values, tilt corrections, cloudless day identification, 
+    and coefficient adjustments. This function aggregates and processes data for daytime, daily, 
+    and cloudless day PAR values, applying correction algorithms and saving the final outputs.
+
+    The function iterates through multiple deployments, filtering the data by zenith angle and 
+    correcting for tilt and cloudless days. For each deployment, it calculates corrected PAR coefficients 
+    using a polynomial fit, applies the corrections to the data, and appends the results to the final dataframes.
+    Additionally, it handles edge cases like insufficient cloudless days by skipping deployments that do not meet 
+    the required minimum threshold.
 
     Args:
-        deployment_start_dates (list): List of deployment start dates.
-        daytime_df (Dataframe): Dataframe of PAR data excluding night time values.
-        site_name (string): Site name string.
+        deployment_start_dates (list): A list of deployment start dates (as strings), where each entry 
+                                       represents the beginning of a new deployment period.
+        decamin_df (DataFrame): A dataframe containing the PAR data, including date, zenith angle, and raw PAR 
+                                values, for both day and night periods.
+        site_name (str): The name of the site for which the data is being processed. This is used for naming output files.
 
     Returns:
-        daytime_model_df (Dataframe): Final dataframe for daytime par values (10 minute samples).
-        daily_df (Dataframe): Final dataframe for daily par values (daily samples).
-        cloudless_df (Dataframe): Final dataframe for cloudless day par values (daily samples).
+        tuple:
+            - final_daytime_model_df (DataFrame): A dataframe containing corrected PAR values for 10-minute daytime samples.
+            - final_daily_df (DataFrame): A dataframe with daily PAR values, corrected for tilt and cloudless days.
+            - final_cloudless_df (DataFrame): A dataframe with corrected PAR values for cloudless days only.
+            - final_filtered_cloudless_df (DataFrame): A dataframe with cloudless days data filtered for outliers based on residuals.
     """
     blank = []
     # Create empty dataframes
@@ -653,7 +760,7 @@ def get_corrected_par(deployment_start_dates, decamin_df, site_name):
         single_deployment_daytime_mask = (daytime_decamin_df['date'] > deployment_start_date) & (daytime_decamin_df['date'] <= deployment_end_date)
         single_deployment_daytime_df = daytime_decamin_df.loc[single_deployment_daytime_mask]
         # Get model par and old corpar and add to single_deployment_daytime_data df
-        single_deployment_daytime_df = get_model_corr_par(single_deployment_daytime_df)
+        single_deployment_daytime_df = get_modpar_oldcorpar(single_deployment_daytime_df)
 
         # Get tilt values
         raw_tilt = get_raw_tilt(single_deployment_daytime_df)
@@ -713,14 +820,29 @@ def get_corrected_par(deployment_start_dates, decamin_df, site_name):
 
 
 def save_outputs(site_name, daytime_model_df, daily_df, cloudless_df, filtered_cloudless_df, deployment_duration_str = "all_deployments"):
-    """Saves the par outputs as csv files and build plots.
+    """
+    Saves the processed PAR output dataframes as CSV files and creates the corresponding output plots. 
+
+    This function takes the final processed dataframes for different PAR values (daytime, daily, cloudless, and filtered cloudless), 
+    and saves them as CSV files in a specified directory. It also ensures that the output directory exists before saving the files.
 
     Args:
-        final_daytime_model_df (Dataframe): Final dataframe for daytime par values (10 minute samples).
-        final_daily_df (Dataframe): Final dataframe for daily par values (daily samples).
-        final_cloudless_df (Dataframe): Final dataframe for cloudless day par values (daily samples).
-        deployment_start_dates (list): List of deployment start dates.
-        site_name_slice (string): Site name string.
+        site_name (str): The name of the site, used for naming the output files and organizing them into site-specific directories.
+        daytime_model_df (DataFrame): A dataframe containing corrected PAR values for 10-minute daytime samples (pcorrA).
+        daily_df (DataFrame): A dataframe containing daily PAR values (clear_stats).
+        cloudless_df (DataFrame): A dataframe containing corrected PAR values for cloudless days only (daily samples).
+        filtered_cloudless_df (DataFrame): A dataframe containing filtered cloudless day PAR values based on residuals.
+        deployment_duration_str (str, optional): A string representing the duration of the deployment, used to customize the file name 
+                                                 (default is "all_deployments"). It allows users to differentiate between different 
+                                                 deployment periods when saving files.
+
+    Returns:
+        None: The function does not return any values. It saves the dataframes to CSV files.
+
+    Side Effects:
+        - Creates a directory for the site if it doesn't already exist.
+        - Saves the input dataframes to CSV files in the site's directory.
+        - Outputs confirmation messages to indicate that files have been created.
     """
 
     output_directory = rf"{CONFIG["PROCESSED_FILE_PATH"]}\{site_name}"

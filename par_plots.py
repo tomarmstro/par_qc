@@ -6,7 +6,24 @@ from config import CONFIG
 
 
 def build_plots(site_name, decamin_df, daily_df, cloudless_df, deployment_start_dates):
+    """
+    Generates and saves various plots related to Photosynthetically Active Radiation (PAR) and tilt data for a specified site.
 
+    Args:
+        site_name (str): The name of the site for which plots are generated, used to define output file names.
+        decamin_df (DataFrame): DataFrame containing decamin-level (10-minute interval) PAR data, with columns such as 'date', 'rawpar', 'modpar', 'corpar', and 'himawari_resampled'.
+        daily_df (DataFrame): DataFrame with daily aggregated data, including noon PAR values for 'noon_rawpar', 'noon_corpar', 'noon_modpar', and 'noon_himawari'.
+        cloudless_df (DataFrame): DataFrame with data filtered for cloudless days, containing columns like 'date', 'ratio_noon_par', and 'corrected_ratio'.
+        deployment_start_dates (list of datetime): List of dates marking the start of each deployment, used to add vertical reference lines on plots.
+
+    Plots:
+        - Scatter plots for PAR ratios during cloudless days.
+        - Scatter plots of daily tilt values and their rolling averages.
+        - Comparison plots of PAR values (raw, model, and corrected) and differences between these values.
+        - Scatter plot comparing corrected PAR and Himawari satellite PAR values, and residuals.
+        - Line plot showing noon PAR values from raw, corrected, model, and Himawari data.
+    """
+    
     output_directory = f"{CONFIG["PROCESSED_FILE_PATH"]}\{site_name}"
 
     # Plotting ratios
