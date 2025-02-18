@@ -23,8 +23,8 @@ def build_plots(site_name, decamin_df, daily_df, cloudless_df, deployment_start_
         - Scatter plot comparing corrected PAR and Himawari satellite PAR values, and residuals.
         - Line plot showing noon PAR values from raw, corrected, model, and Himawari data.
     """
-    
-    output_directory = f"{CONFIG["PROCESSED_FILE_PATH"]}\{site_name}"
+    proc_file_path = CONFIG["PROCESSED_FILE_PATH"]
+    output_directory = f"{proc_file_path}\{site_name}"
 
     # Plotting ratios
     # ratio_scatter, ratio_scatter_ax = plt.subplots(figsize=(12, 6))

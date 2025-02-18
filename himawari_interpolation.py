@@ -40,7 +40,8 @@ def interogate_himawari_csv(site_name):
             - site_himawari_data_filename (str): The file path for the Himawari data file for the specified site.
     """
     # Specify filename for himawari data of this specific site
-    site_himawari_data_filename = rf"{CONFIG["PROCESSED_FILE_PATH"]}\himawari_interpolation\{site_name}_himawari_results.csv"
+    proc_file_path = CONFIG["PROCESSED_FILE_PATH"]
+    site_himawari_data_filename = rf"{proc_file_path}\himawari_interpolation\{site_name}_himawari_results.csv"
 
     # Check for saved himawari data and load it if exists.
     if os.path.exists(site_himawari_data_filename):

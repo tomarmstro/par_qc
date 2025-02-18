@@ -6,7 +6,9 @@ Created: 1/03/2024
 """
 
 # imports
+from sklearn import datasets
 from sklearn.linear_model import LinearRegression
+
 import pandas as pd
 import numpy as np
 from scipy.stats import zscore
@@ -18,13 +20,13 @@ import par_plots
 import himawari_interpolation
 import os
 from datetime import datetime
+import argparse
 
 # config
 from config import CONFIG
 
 """
 TODO: Implement daytime filter - Either a time threshold, zenith angle or incorporate Vinny's code?
-TODO: Adjust main() so it is less of a mess
 TODO: Adjust the file intake - using config for the input file path is clunky - consider a basic file selection gui?
 TODO: Better visualisations - Assess if it is worth using plotly for better interactivity of plots (par_plots) - Which plots to produce routinely
 TODO: Validation of outputs?
@@ -34,7 +36,7 @@ TODO: Check the new csv for Cloudless days with outlier days removed - Make the 
 TODO: Is the pratio correction based on the entire deployment? Does missing data in a deployment cause issues here?
 """
 
-def main():
+def main(input_file):
     """
     Main function to process, analyze, and save PAR data with correction and visualization.
 
@@ -50,8 +52,14 @@ def main():
 
     """
 
+    # Check if the provided file exists
+    if not os.path.isfile(input_file):
+        print(f"Error: The file '{input_file}' does not exist.")
+        return
+
     script_start_time = datetime.now()
-    df, site_name = data_setup()
+    df, site_name = data_setup(input_file)
+    # df, site_name = data_setup()
     print(f"Processing data from {site_name}..")
     # site_name_slice = site_name[0:6]
     daytime_df, deployment_start_dates = daytime_dataset_setup(df)
@@ -137,7 +145,7 @@ def resample_10_min(data):
     return df_interpolated[['date', 'himawari_resampled']]
 
 
-def data_setup():
+def data_setup(input_file):
     """
     Performs initial data wrangling on raw PAR data and associated metadata.
 
@@ -153,7 +161,8 @@ def data_setup():
     """
 
     print("Setting up data..")
-    df = pd.read_csv(CONFIG["INPUT_FILE"])
+    # df = pd.read_csv(CONFIG["INPUT_FILE"])
+    df = pd.read_csv(input_file)
     site_name = df['site_name'][0].replace(" ", "_")
     # Convert date to local time - Is this necessary?
     df['date'] = pd.to_datetime(df['time']).dt.tz_convert('Etc/GMT-10')
@@ -776,8 +785,10 @@ def get_corrected_par(deployment_start_dates, decamin_df, site_name):
         cloudless_df = cloudless_df.join(cloudless_tilt_df)
 
         # Check for having enough Cloudless days
-        if len(cloudless_df) < CONFIG["MINIMUM_CLOUDLESS_DAYS"]:
-            print(f"Less than {CONFIG["MINIMUM_CLOUDLESS_DAYS"]} cloudless days in this deployment, moving to next deployment.")
+        # Create variable for config to enable use in f-string
+        config_min_cloudless = CONFIG["MINIMUM_CLOUDLESS_DAYS"]
+        if len(cloudless_df) < config_min_cloudless:
+            print(f"Less than {config_min_cloudless} cloudless days in this deployment, moving to next deployment.")
             continue
         daily_df = daily_df.join(get_consecutive_cloudless(daily_df))
 
@@ -845,7 +856,9 @@ def save_outputs(site_name, daytime_model_df, daily_df, cloudless_df, filtered_c
         - Outputs confirmation messages to indicate that files have been created.
     """
 
-    output_directory = rf"{CONFIG["PROCESSED_FILE_PATH"]}\{site_name}"
+    # Create variable for config to enable f-string
+    proc_file_path = CONFIG["PROCESSED_FILE_PATH"]   
+    output_directory = rf"{proc_file_path}\{site_name}"
 
     if not os.path.exists(output_directory):
         os.makedirs(output_directory)
@@ -873,4 +886,16 @@ def save_outputs(site_name, daytime_model_df, daily_df, cloudless_df, filtered_c
 
 # %%
 if __name__ == "__main__":
-    main()
+    # Set up argument parser
+    parser = argparse.ArgumentParser(description="Process a file.")
+    parser.add_argument(
+        "input_file",
+        type=str,
+        help="Path to the file to process."
+    )
+    
+    # Parse the arguments
+    args = parser.parse_args()
+    
+    # Call the main function with the provided file path
+    main(args.input_file)
